@@ -1,9 +1,33 @@
 import torch
 import math
+from typing import List
+
+
+def normalize(tensor: torch.tensor) -> torch.tensor:
+    tensor = tensor - tensor.amin()
+    tensor = tensor / tensor.amax()
+    return tensor
+
+
+def normalize_channelwise(tensor: torch.tensor, dim: int = -1, device: torch.cuda.device = torch.device("cuda")) -> torch.tensor:
+    indices = torch.arange(0, len(tensor.shape), device=device)
+    mask = torch.ones(indices.shape, dtype=torch.bool, device=device)
+    mask[dim] = False
+    indices = indices[mask].tolist()
+
+    tensor = tensor - tensor.amin(indices)
+    tensor = tensor / tensor.amax(indices)
+    return tensor
+
+
+def retain_grads(non_leaf_tensor: List[torch.tensor]) -> None:
+    for tensor in non_leaf_tensor:
+        tensor.retain_grad()
+
 
 # From: https://pytorch3d.readthedocs.io/en/latest/_modules/pytorch3d/renderer/cameras.html#FoVPerspectiveCameras.compute_projection_matrix
 
-def build_projection_matrix(fov: float, near_clip: float, far_clip: float) -> torch.tensor:
+def build_projection_matrix(fov: float, near_clip: float, far_clip: float, device: torch.cuda.device = torch.device("cuda")) -> torch.tensor:
     """
     Compute the calibration matrix K of shape (N, 4, 4)
 
@@ -18,11 +42,11 @@ def build_projection_matrix(fov: float, near_clip: float, far_clip: float) -> to
     Returns:
     torch.FloatTensor of the calibration matrix with shape (N, 4, 4)
     """
-    K = torch.zeros((4, 4), dtype=torch.float32)
+    K = torch.zeros((4, 4), dtype=torch.float32, device=device)
     fov = (math.pi / 180) * fov
 
     if not torch.is_tensor(fov):
-        fov = torch.tensor(fov)
+        fov = torch.tensor(fov, device=device)
 
     tanHalfFov = torch.tan((fov / 2))
     max_y = tanHalfFov * near_clip

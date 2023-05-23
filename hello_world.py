@@ -8,7 +8,7 @@ import imageio
 import numpy as np
 import torch
 import transforms
-from laser import Laser
+from laser_torch import Laser
 import math
 import rasterization
 
