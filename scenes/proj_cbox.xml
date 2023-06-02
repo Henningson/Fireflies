@@ -1,6 +1,6 @@
 <scene version="3.0.0">
     <default name="spp" value="128"/>
-    <default name="res" value="256"/>
+    <default name="res" value="128"/>
     <default name="max_depth" value="6"/>
     <default name="integrator" value="path"/>
 
@@ -79,7 +79,7 @@
     <emitter type="projector">
     <ref name="irradiance" id="tex"/>
         <float name="fov" value="34.0"/>
-        <float name="scale" value="500"/>
+        <float name="scale" value="1000.0"/>
         <transform name="to_world">
             <lookat origin="0, 0, 4"
                     target="0, 0, 0"
@@ -115,7 +115,6 @@
         <ref id="red"/>
     </shape>
 
-    <!--
     <shape type="sphere" id="mirrorsphere">
         <transform name="to_world">
             <scale value="0.5"/>
@@ -131,5 +130,4 @@
         </transform>
         <ref id="glass"/>
     </shape>
-    -->
 </scene>

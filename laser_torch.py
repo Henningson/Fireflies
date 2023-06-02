@@ -70,9 +70,7 @@ class Laser:
         self._rays[:] = self.normalize(clamped_rays)
 
     def randomize_out_of_bounds(self) -> None:
-        # TODO: Check, if laser beam falls out of fov. If it does, clamp it back.
-        # If randomize is set, spawn a new random laser inside NDC.
-        # Else, clamp it to the edge.
+        # TODO: Check, if laser beam falls out of fov. If it does, spawn a new randomly in NDC in (-1, 1).
         new_rays = self._rays.clone()
         ndc_coords = transforms_torch.transform_points(new_rays, self._perspective)
         xy_coords = ndc_coords[:, 0:2]
@@ -94,6 +92,9 @@ class Laser:
 
     def normalize(self, tensor: torch.tensor) -> torch.tensor:
         return tensor / torch.linalg.norm(tensor, dim=-1, keepdims=True)
+    
+    def normalize_rays(self) -> None:
+        self._rays[:] = self.normalize(self._rays)
     
 
     def setToWorld(self, to_world: torch.tensor) -> None:

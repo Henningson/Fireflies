@@ -3,6 +3,13 @@ import math
 from typing import List
 
 
+def randomBetweenTensors(a: torch.tensor, b: torch.tensor) -> torch.tensor:
+    assert a.size() == b.size()
+    assert a.device == b.device
+
+    rands = torch.rand(a.shape, device=a.device)
+    return rands * (b - a ) + b
+
 def normalize(tensor: torch.tensor) -> torch.tensor:
     tensor = tensor - tensor.amin()
     tensor = tensor / tensor.amax()

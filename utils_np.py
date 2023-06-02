@@ -1,6 +1,13 @@
 import numpy as np
 import math
 
+
+
+def normalize(tensor: np.array) -> np.array:
+    tensor = tensor - tensor.min()
+    tensor = tensor / tensor.max()
+    return tensor
+
 def build_projection_matrix(fov: float, near_clip: float, far_clip: float) -> np.array:
     S = 1.0 / math.tan((fov / 2.0) * (math.pi / 180))
     z_far = -far_clip / (far_clip - near_clip)
