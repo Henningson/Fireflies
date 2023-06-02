@@ -3,6 +3,13 @@ import torch
 def convert_points_to_homogeneous(points: torch.tensor) -> torch.tensor:
     return torch.nn.functional.pad(points, pad=(0, 1), mode="constant", value=1.0)
 
+def toMat4x4(mat: torch.tensor, addOne: bool=True) -> torch.tensor:
+    mat4x4 = torch.nn.functional.pad(mat, pad=(0, 1, 0, 1), mode="constant", value=0.0)
+
+    if addOne:
+        mat4x4[3, 3] = 1.0
+
+    return mat4x4
 
 def convert_points_from_homogeneous(points: torch.tensor) -> torch.tensor:
     return points[..., :-1] / points[..., -1:]

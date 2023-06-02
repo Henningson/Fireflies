@@ -2,6 +2,7 @@ import torch
 import utils_io
 import utils_math
 import utils_torch
+import transforms_torch
 import random
 
 class Object:
@@ -103,13 +104,16 @@ class Object:
         temp_vertex = self.sampleAnimation()
 
         # Scale Object
-        temp_vertex = temp_vertex  @self.sampleScale()
+        temp_vertex = transforms_torch.transform_points(temp_vertex, self.sampleScale())
 
-        # Rotate Object 
-        temp_vertex = temp_vertex @ self.sampleRotations()
+        # Rotate Object
+        rotMat = self.sampleRotations()
+        rotMat = transforms_torch.toMat4x4(rotMat)
+        temp_vertex = transforms_torch.transform_points(temp_vertex, rotMat)
 
         # Translate Object
-        temp_vertex = temp_vertex @ self.sampleTranslation()
+        temp_vertex = transforms_torch.transform_points(temp_vertex, self.sampleTranslation())
+
 
         return temp_vertex
 
@@ -122,6 +126,8 @@ def _test():
     test_obj.sampleScale()
     test_obj.sampleTranslation()
     test_obj.sampleRotations()
+
+    test_obj.getRandomizedVertices()
     a = 1
 
 
