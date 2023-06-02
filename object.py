@@ -6,9 +6,8 @@ import random
 
 class Object:
     def __init__(self, file_path: str, device: torch.cuda.device = torch.device("cuda")):
-        self.loadObject(file_path)
         self._device = device
-        self._vertices = torch.tensor([9, 3], device=self._device)
+        self.loadObject(file_path)
 
     def setRotations(self, 
                      pitch_min: float, 
@@ -49,7 +48,7 @@ class Object:
         object_dict = utils_io.read_config_yaml(file_path)
         self.setVertices(torch.tensor(object_dict["vertices"]))
         self.setAnimation(torch.tensor(object_dict["vertex_offsets"]), bool(object_dict["replace_vertices"]))
-        self.setScale(torch.tensor(object_dict["min_scale"]), torch.tensor(object_dict["max_scale"]))
+        self.setScales(torch.tensor(object_dict["min_scale"]), torch.tensor(object_dict["max_scale"]))
         self.setTranslations(torch.tensor(object_dict["min_translation"]), torch.tensor(object_dict["max_translation"]))
         self.setRotations(float(object_dict["min_pitch"]),
                           float(object_dict["max_pitch"]),
@@ -68,34 +67,63 @@ class Object:
         return scaleMatrix
 
     def sampleRotations(self) -> torch.tensor:
-        pitch = utils_math.randomBetweenTwoValues(self.min_pitch, self.max_pitch)
-        yaw = utils_math.randomBetweenTwoValues(self.min_yaw, self.max_yaw)
-        roll = utils_math.randomBetweenTwoValues(self.min_roll, self.max_roll)
+        pitch = utils_math.uniformBetweenValues(self.pitch_min, self.pitch_max)
+        yaw = utils_math.uniformBetweenValues(self.yaw_min, self.yaw_max)
+        roll = utils_math.uniformBetweenValues(self.roll_min, self.roll_max)
 
         yaw_mat   = utils_math.getYawTransform(yaw, self._device)
         pitch_mat = utils_math.getPitchTransform(pitch, self._device)
         roll_mat  = utils_math.getRollTransform(roll, self._device)
 
-        return yaw_mat*pitch_mat*roll_mat
+        return yaw_mat @ pitch_mat @ roll_mat
 
     def sampleTranslation(self) -> torch.tensor:
         translationMatrix = torch.eye(4, device=self._device)
         random_translation = utils_torch.randomBetweenTensors(self.min_translation, self.max_translation)
 
-        translationMatrix[3, 0] = random_translation[0]
-        translationMatrix[3, 1] = random_translation[1]
-        translationMatrix[3, 2] = random_translation[2]
+        translationMatrix[0, 3] = random_translation[0]
+        translationMatrix[1, 3] = random_translation[1]
+        translationMatrix[2, 3] = random_translation[2]
         return translationMatrix
 
     def sampleAnimation(self) -> torch.tensor:
+        if self.vertex_offsets is None:
+            return self.vertices
+
         num_anim_frames = self.vertex_offsets.shape[0]
-        rand_index = random.randint(num_anim_frames - 1)
+        rand_index = random.randint(0, num_anim_frames - 1)
 
         if self.replace_vertices:
             return self.vertex_offsets[rand_index]
         
         return self.vertices + self.vertex_offsets[rand_index]
 
-    def randomizeObject(self, params) -> None:
-        # TODO: Change parameters inplace
-        pass
+    def getRandomizedVertices(self) -> torch.tensor:
+        # Sample Animations
+        temp_vertex = self.sampleAnimation()
+
+        # Scale Object
+        temp_vertex = temp_vertex  @self.sampleScale()
+
+        # Rotate Object 
+        temp_vertex = temp_vertex @ self.sampleRotations()
+
+        # Translate Object
+        temp_vertex = temp_vertex @ self.sampleTranslation()
+
+        return temp_vertex
+
+
+
+
+def _test():
+    test_obj = Object("test.yaml")
+    test_obj.sampleAnimation()
+    test_obj.sampleScale()
+    test_obj.sampleTranslation()
+    test_obj.sampleRotations()
+    a = 1
+
+
+if __name__ == "__main__":
+    _test()

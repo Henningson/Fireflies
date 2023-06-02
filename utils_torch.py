@@ -1,6 +1,15 @@
 import torch
 import math
+import random
 from typing import List
+
+
+def singleRandomBetweenTensors(a: torch.tensor, b: torch.tensor) -> torch.tensor:
+    assert a.size() == b.size()
+    assert a.device == b.device
+
+    rands = random.uniform(0, 1)
+    return rands * (b - a ) + b
 
 
 def randomBetweenTensors(a: torch.tensor, b: torch.tensor) -> torch.tensor:
@@ -8,7 +17,8 @@ def randomBetweenTensors(a: torch.tensor, b: torch.tensor) -> torch.tensor:
     assert a.device == b.device
 
     rands = torch.rand(a.shape, device=a.device)
-    return rands * (b - a ) + b
+    return rands * (b - a) + a
+
 
 def normalize(tensor: torch.tensor) -> torch.tensor:
     tensor = tensor - tensor.amin()

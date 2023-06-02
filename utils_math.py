@@ -3,7 +3,7 @@ import torch
 import math
 
 def uniformBetweenValues(a: float, b: float):
-    random.uniform(a, b)
+    return random.uniform(a, b)
 
 def getYawTransform(alpha: float, _device: torch.cuda.device) -> torch.tensor:
     rotZ = torch.tensor([[math.cos(alpha), -math.sin(alpha), 0],
