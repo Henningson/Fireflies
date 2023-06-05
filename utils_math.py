@@ -28,3 +28,30 @@ def getRollTransform(alpha: float, _device: torch.cuda.device) -> torch.tensor:
                          device=_device)
 
     return rotX
+
+
+
+
+def test():
+    import transforms_torch
+
+    roll = 0.0
+    pitch = 3.141/2.0
+    yaw = 0.0
+
+
+    vec = torch.tensor([[1.0, 0.0, 0.0]])
+
+    yaw_mat   = getYawTransform(yaw, vec.device)
+    pitch_mat = getPitchTransform(pitch, vec.device)
+    roll_mat  = getRollTransform(roll, vec.device)
+
+    rot = yaw_mat @ pitch_mat @ roll_mat
+
+    rot = transforms_torch.toMat4x4(rot)
+    rotVec = transforms_torch.transform_points(vec, rot)
+    print(rotVec)
+
+
+if __name__ == "__main__":
+    test()

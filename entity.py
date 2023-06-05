@@ -8,7 +8,7 @@ from typing import List
 
 
 
-class BaseObject:
+class BaseEntity:
     def __init__(self, file_path: str, device: torch.cuda.device = torch.device("cuda")):
         self._device = device
         self.loadObject(file_path)
@@ -30,12 +30,15 @@ class BaseObject:
 
 
     def setTranslation(self, vec: List[float]) -> None:
-        self._translation = torch.tensor(vec, device=self._device)
+        self._translation = torch.eye(4, device=self._device)
+
+        self._translation[0, 3] = vec[0]
+        self._translation[1, 3] = vec[1]
+        self._translation[2, 3] = vec[2]
 
 
     def setScale(self, vec: List[float]) -> None:
         self._scale = torch.tensor(vec, device=self._device)
-        
         self._scale = torch.eye(4, device=self._device)
 
         self._scale[0, 0] = vec[0]
@@ -55,13 +58,17 @@ class BaseObject:
 
     def loadObject(self, file_path: str) -> None:
         object_dict = utils_io.read_config_yaml(file_path)
-        self.setVertices(object_dict["vertices"])
-        self.setAnimation(object_dict["vertex_offsets"]), bool(object_dict["replace_vertices"])
+        self.setVertices(object_dict["vertices"])#
         self.setScale(object_dict["scale"])
         self.setTranslation(object_dict["translation"])
         self.setRotation(float(object_dict["pitch"]),
                           float(object_dict["yaw"]),
                           float(object_dict["roll"]))
+        
+        self._animated = bool(object_dict["animated"])
+        if self._animated:
+            self._animated = True
+            self.setAnimation(object_dict["vertex_offsets"]), bool(object_dict["replace_vertices"])
 
 
     def sampleAnimation(self) -> torch.tensor:
@@ -79,7 +86,7 @@ class BaseObject:
 
     def getVertexData(self) -> torch.tensor:
         # Sample Animations
-        temp_vertex = self._verticses
+        temp_vertex = self.sampleAnimation() if self._animated else self._vertices 
 
         # Scale Object
         temp_vertex = transforms_torch.transform_points(temp_vertex, self._scale)
@@ -96,21 +103,18 @@ class BaseObject:
 
 
     def rotation(self) -> torch.tensor:
-        return self._last_rotation
+        return self._rotation
     
 
     def translation(self) -> torch.tensor:
-        return self._last_translation
+        return self._translation
 
 
 
-class RandomizableObject(BaseObject):
+class RandomizableEntity(BaseEntity):
     def __init__(self, file_path: str, device: torch.cuda.device = torch.device("cuda")):
         self._device = device
         self.loadObject(file_path)
-
-        self._last_rotation = None
-        self._last_translation = None
 
 
     def setRotation(self, 
@@ -165,6 +169,11 @@ class RandomizableObject(BaseObject):
                         float(object_dict["max_yaw"]),
                         float(object_dict["min_roll"]),
                         float(object_dict["max_roll"]))
+        
+        self._animated = bool(object_dict["animated"])
+        if self._animated:
+            self._animated = True
+            self.setAnimation(object_dict["vertex_offsets"]), bool(object_dict["replace_vertices"])
     
 
     def sampleScale(self) -> torch.tensor:
@@ -203,7 +212,7 @@ class RandomizableObject(BaseObject):
 
     def getVertexData(self) -> torch.tensor:
         # Sample Animations
-        temp_vertex = self.sampleAnimation()
+        temp_vertex = self.sampleAnimation() if self._animated else self._vertices 
 
         # Scale Object
         temp_vertex = transforms_torch.transform_points(temp_vertex, self.sampleScale())
@@ -229,15 +238,15 @@ class RandomizableObject(BaseObject):
 
 
 
-class RelativeObject(BaseObject):
-    def __init__(self, file_path: str, parent: RandomizableObject, device: torch.cuda.device = torch.device("cuda")):
-        BaseObject.__init__(self, file_path=file_path, device=device)
+class RelativeEntity(BaseEntity):
+    def __init__(self, file_path: str, parent: BaseEntity, device: torch.cuda.device = torch.device("cuda")):
+        BaseEntity.__init__(self, file_path=file_path, device=device)
         self._parent = parent
 
 
     def getVertexData(self) -> torch.tensor:
         # Sample Animations
-        temp_vertex = self._verticses
+        temp_vertex = self.sampleAnimation() if self._animated else self._vertices 
 
         # Scale Object
         temp_vertex = transforms_torch.transform_points(temp_vertex, self._scale)
@@ -265,15 +274,19 @@ class RelativeObject(BaseObject):
 
 
 def _test():
-    test_obj = RandomizableObject("test_random_object.yaml")
-    print(test_obj.sampleAnimation())
-    print(test_obj.sampleScale())
-    print(test_obj.sampleTranslation())
-    print(test_obj.sampleRotation())
+    print("_____ RANDOMIZED OBJECT _____")
+    test_random_obj = RandomizableEntity("test_random_object.yaml")
+    print(test_random_obj.getVertexData())
 
-    print(test_obj.getVertexData())
-    a = 1
 
+    print("_____ BASE OBJECT _____")
+    test_base_obj = BaseEntity("test_base_object.yaml")
+    print(test_base_obj.getVertexData())
+
+
+    print("_____ RELATIVE OBJECT _____")
+    test_rel_obj = RelativeEntity("test_relative_object.yaml", test_base_obj)
+    print(test_rel_obj.getVertexData())
 
 if __name__ == "__main__":
     _test()
