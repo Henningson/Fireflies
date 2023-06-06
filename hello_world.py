@@ -7,7 +7,7 @@ import matplotlib.pyplot as plt
 import imageio
 import numpy as np
 import torch
-import transforms
+import transforms_torch
 from laser_torch import Laser
 import math
 import rasterization
@@ -155,7 +155,7 @@ def get_depth_map(scene, spp=64):
     # Set to zero if no intersection was found
     result[~surface_interaction.is_valid()] = 0
 
-    depth = np.array(result).reshape(512, 512, -1).mean(axis=-1)
+    depth = np.array(result).reshape(int(film_size[1]), int(film_size[0]), -1).mean(axis=-1)
     depth /= depth.max()
 
     return depth
@@ -168,84 +168,91 @@ def mse(image, image_ref):
 #proj = torch.nn.functional.pad(image, (2, 0, 0, 0), mode="constant", value=0.0)[:, 0:512]
 #disp_map = compute_disparity(image, proj)
 
-scene_init = mi.load_file("scenes/proj_cbox.xml", spp=256)
-params = mi.traverse(scene_init)
+def main():
+    scene_init = mi.load_file("scenes/proj_cbox.xml", spp=256)
+    params = mi.traverse(scene_init)
 
 
 
-'''laser = Laser(100, 100, 0.005, 
-              np.array([[1.0, 0.0, 0.0, 0.0], 
-                              [0.0, 1.0, 0.0, 0.0], 
-                              [0.0, 0.0, -1.0, 0.0], 
-                              [0.0, 0.0, 0.0, 1.0]]),
-              np.array([0.0, 0.0, 6.0]))
-'''
+    '''laser = Laser(100, 100, 0.005, 
+                np.array([[1.0, 0.0, 0.0, 0.0], 
+                                [0.0, 1.0, 0.0, 0.0], 
+                                [0.0, 0.0, -1.0, 0.0], 
+                                [0.0, 0.0, 0.0, 1.0]]),
+                np.array([0.0, 0.0, 6.0]))
+    '''
 
-#laser_hit_points = cast_laser(scene_init, laser)
-#projected_points = project_to_camera_space(mi.traverse(scene_init), laser_hit_points)
-#projected_points /= projected_points[:, 2:]
-
-
-
-depth = get_depth_map(scene_init)
-
-render_init = mi.render(scene_init, spp=256)
-image_init = mi.util.convert_to_bitmap(render_init)
-
-scene_gt   = mi.load_file("scenes/proj_cbox2.xml", spp=256)
-render_gt = mi.render(scene_gt, spp=256)
-image_gt = mi.util.convert_to_bitmap(render_gt)
-
-depth = np.expand_dims(depth, -1).repeat(3, 2)
-image_init = np.array(image_init).astype(float) / 255
-image_gt = np.array(image_gt).astype(float) / 255
+    #laser_hit_points = cast_laser(scene_init, laser)
+    #projected_points = project_to_camera_space(mi.traverse(scene_init), laser_hit_points)
+    #projected_points /= projected_points[:, 2:]
 
 
-
-print("Init | GT | Depth")
-plt.axis("off")
-plt.title("GT")
-plt.imshow(np.concatenate([image_init, image_gt, depth], axis=-2))
-plt.show(block=True)
-
-optimizer = mi.ad.Adam(lr=0.05)
-#optimizer[key_red] = mi.Color3f(params[key_red])
-#optimizer[key_green] = mi.Color3f(params[key_green])   
-optimizer["tex.data"] = mi.TensorXf(params["tex.data"])
-params.update(optimizer)
-
-iterations = 300
-writer = imageio.get_writer('test.mp4', fps=25)
-
-for it in range(iterations):
-    image = mi.render(scene_init, params, spp=32)
-    loss = mse(image, render_gt)
-    dr.backward(loss)
-
-    optimizer.step()
     
-    #optimizer[key_red] = dr.clamp(optimizer[key_red], 0.0, 1.0)
-    #optimizer[key_green] = dr.clamp(optimizer[key_green], 0.0, 1.0)
+    depth = get_depth_map(scene_init)
 
+    render_init = mi.render(scene_init, spp=256)
+    image_init = mi.util.convert_to_bitmap(render_init)
+
+    scene_gt   = mi.load_file("TestScene/test_scene.xml", spp=256)
+    render_gt = mi.render(scene_gt, spp=256)
+    image_gt = mi.util.convert_to_bitmap(render_gt)
+
+    depth = np.expand_dims(depth, -1).repeat(3, 2)
+    image_init = np.array(image_init).astype(float) / 255
+    image_gt = np.array(image_gt).astype(float) / 255
+
+
+
+    print("Init | GT | Depth")
+    plt.axis("off")
+    plt.title("GT")
+    plt.imshow(np.concatenate([image_init, image_gt, depth], axis=-2))
+    plt.show(block=True)
+
+    optimizer = mi.ad.Adam(lr=0.05)
+    #optimizer[key_red] = mi.Color3f(params[key_red])
+    #optimizer[key_green] = mi.Color3f(params[key_green])   
+    optimizer["tex.data"] = mi.TensorXf(params["tex.data"])
     params.update(optimizer)
-    #err_red = dr.sum(dr.sqr(ref_red - params[key_red]))
-    #err_green = dr.sum(dr.sqr(ref_green - params[key_green]))
-    print(f"Iteration {it:02d}", end='\r')
 
-    bitmap = mi.util.convert_to_bitmap(image)
-    bitmap = np.array(bitmap)
-    writer.append_data(bitmap)
+    iterations = 300
+    writer = imageio.get_writer('test.mp4', fps=25)
 
-    opt_texture = mi.util.convert_to_bitmap(params["tex.data"])
-    mi.util.write_bitmap("opt_tex.png", opt_texture)
-writer.close()
+    for it in range(iterations):
+        image = mi.render(scene_init, params, spp=32)
+        loss = mse(image, render_gt)
+        dr.backward(loss)
+
+        optimizer.step()
+        
+        #optimizer[key_red] = dr.clamp(optimizer[key_red], 0.0, 1.0)
+        #optimizer[key_green] = dr.clamp(optimizer[key_green], 0.0, 1.0)
+
+        params.update(optimizer)
+        #err_red = dr.sum(dr.sqr(ref_red - params[key_red]))
+        #err_green = dr.sum(dr.sqr(ref_green - params[key_green]))
+        print(f"Iteration {it:02d}", end='\r')
+
+        bitmap = mi.util.convert_to_bitmap(image)
+        bitmap = np.array(bitmap)
+        writer.append_data(bitmap)
+
+        opt_texture = mi.util.convert_to_bitmap(params["tex.data"])
+        mi.util.write_bitmap("opt_tex.png", opt_texture)
+    writer.close()
 
 
 
 
-print('\nOptimization complete.')
+    print('\nOptimization complete.')
 
 
 
 
 
+
+
+
+
+if __name__ == "__main__":
+    main()

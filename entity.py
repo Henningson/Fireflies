@@ -49,7 +49,7 @@ class BaseEntity:
     def setAnimation(self,
                     vertex_offsets: torch.tensor,
                     replace_vertices: bool = False) -> None:
-        self._vertex_offsets = vertex_offsets.to(self._device)
+        self._vertex_offsets = torch.tensor(vertex_offsets, device=self._device)
         self._replace_vertices = replace_vertices
 
     def setVertices(self, vertices: List[List[float]]) -> None:
@@ -72,16 +72,16 @@ class BaseEntity:
 
 
     def sampleAnimation(self) -> torch.tensor:
-        if self.vertex_offsets is None:
-            return self.vertices
+        if self._vertex_offsets is None:
+            return self._vertices
 
-        num_anim_frames = self.vertex_offsets.shape[0]
+        num_anim_frames = self._vertex_offsets.shape[0]
         rand_index = random.randint(0, num_anim_frames - 1)
 
-        if self.replace_vertices:
-            return self.vertex_offsets[rand_index]
+        if self._replace_vertices:
+            return self._vertex_offsets[rand_index]
         
-        return self.vertices + self.vertex_offsets[rand_index]
+        return self._vertices + self._vertex_offsets[rand_index]
 
 
     def getVertexData(self) -> torch.tensor:
@@ -144,17 +144,6 @@ class RandomizableEntity(BaseEntity):
                   vecB: torch.tensor) -> None:
         self.min_scale = torch.tensor(vecA, device=self._device)
         self.max_scale = torch.tensor(vecB, device=self._device)
-
-
-    def setAnimation(self,
-                    vertex_offsets: List[List[List[float]]],
-                    replace_vertices: bool = False) -> None:
-        self.vertex_offsets = torch.tensor(vertex_offsets, device=self._device)
-        self.replace_vertices = replace_vertices
-
-
-    def setVertices(self, vertices: List[List[float]]) -> None:
-        self.vertices = torch.tensor(vertices, device=self._device)
 
 
     def loadObject(self, file_path: str) -> None:
