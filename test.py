@@ -1,6 +1,7 @@
 import mitsuba as mi
 mi.set_variant("cuda_ad_rgb")
 import drjit as dr
+dr.set_flag(dr.JitFlag.LoopRecord, False)
 import hello_world
 import cv2
 import numpy as np
@@ -114,16 +115,18 @@ def laser_from_variance_map(sensor,
     world_points = ray_origins + ray_directions*intersection_distances
 
     # TODO: Apply inverse transformations, to get local coordinate system
-    return world_points - laser_origin
+    laser_dir = world_points - laser_origin
+    laser_dir = laser_dir / np.linalg.norm(laser_dir, axis=-1, keepdims=True)
+    return laser_dir
 
 
 def test():
     project_path = "TestScene/"
-    num_depth_maps = 5
+    num_depth_maps = 1000
     num_point_samples = 15000
     laser_origin = np.array([[5.0, 0.0, 0.0]])
     weight = 0.001
-    save_images = False
+    save_images = True
     scene = mi.load_file(project_path + "scene.xml")
 
     # Generate random depth maps by uniformly sampling from scene parameter ranges
@@ -143,7 +146,7 @@ def test():
                             depth_maps,
                             variance_map,
                             chosen_points)
-    laser_dir = laser_dir / np.linalg.norm(laser_dir, axis=-1, keepdims=True)
+    
 
     print(laser_dir)
 
