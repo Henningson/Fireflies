@@ -156,7 +156,6 @@ def get_depth_map(scene, spp=64):
     result[~surface_interaction.is_valid()] = 0
 
     depth = np.array(result).reshape(int(film_size[1]), int(film_size[0]), -1).mean(axis=-1)
-    depth /= depth.max()
 
     return depth
 
