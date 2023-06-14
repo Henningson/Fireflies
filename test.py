@@ -16,7 +16,7 @@ def sample_probability_distribution(
     num_samples: int, 
     uniform_weight: float = 0.0) -> np.array:
 
-    variance_map = depth_maps.var(axis=0)
+    variance_map = depth_maps.std(axis=0)
     variance_map += uniform_weight
     prob_distribution = variance_map / variance_map.sum()
 
@@ -122,7 +122,7 @@ def laser_from_variance_map(sensor,
 
 def test():
     project_path = "TestScene/"
-    num_depth_maps = 1000
+    num_depth_maps = 150
     num_point_samples = 15000
     laser_origin = np.array([[5.0, 0.0, 0.0]])
     weight = 0.001
@@ -139,7 +139,7 @@ def test():
         variance_map = (variance_map*255).astype(np.uint8)
         variance_map = cv2.applyColorMap(variance_map, cv2.COLORMAP_VIRIDIS)
         variance_map.reshape(-1, 3)[chosen_points, :] = ~variance_map.reshape(-1, 3)[chosen_points, :]
-        cv2.imwrite("var_map.png", variance_map)
+        cv2.imwrite("sampling_map.png", variance_map)
 
     laser_dir = laser_from_variance_map(scene.sensors()[0],
                             laser_origin,

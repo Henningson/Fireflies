@@ -5,13 +5,26 @@ import utils_torch
 import transforms_torch
 import random
 from typing import List
-
+import os
 
 
 class BaseEntity:
-    def __init__(self, file_path: str, device: torch.cuda.device = torch.device("cuda")):
+    def __init__(self, base_path: str, name: str, config: dict, vertex_data: List[float], device: torch.cuda.device = torch.device("cuda")):
         self._device = device
-        self.loadObject(file_path)
+
+
+        self.setVertices(vertex_data)
+        self.setScale(config["scale"])
+        self.setTranslation(config["translation"])
+        self.setRotation(float(config["pitch"]),
+                          float(config["yaw"]),
+                          float(config["roll"]))
+        
+
+        self._animated = bool(config["animated"])
+        if self._animated:
+            self._animated = True
+            self.setAnimation(config["vertex_offsets"]), bool(config["replace_vertices"])
 
 
     def setRotation(self, 
@@ -52,24 +65,12 @@ class BaseEntity:
         self._vertex_offsets = torch.tensor(vertex_offsets, device=self._device)
         self._replace_vertices = replace_vertices
 
-    def setVertices(self, vertices: List[List[float]]) -> None:
-        self._vertices = torch.tensor(vertices, device=self._device)
+    def setVertices(self, vertices: List[float]) -> None:
+        self._vertices = torch.tensor(vertices, device=self._device).reshape(-1, 3)
 
 
-    def loadObject(self, file_path: str) -> None:
-        object_dict = utils_io.read_config_yaml(file_path)
-        self.setVertices(object_dict["vertices"])#
-        self.setScale(object_dict["scale"])
-        self.setTranslation(object_dict["translation"])
-        self.setRotation(float(object_dict["pitch"]),
-                          float(object_dict["yaw"]),
-                          float(object_dict["roll"]))
-        
-        self._animated = bool(object_dict["animated"])
-        if self._animated:
-            self._animated = True
-            self.setAnimation(object_dict["vertex_offsets"]), bool(object_dict["replace_vertices"])
-
+    def loadObject(self, config: dict) -> None:
+        pass
 
     def sampleAnimation(self) -> torch.tensor:
         if self._vertex_offsets is None:
@@ -111,59 +112,60 @@ class BaseEntity:
 
 
 
-class RandomizableEntity(BaseEntity):
-    def __init__(self, file_path: str, device: torch.cuda.device = torch.device("cuda")):
-        self._device = device
-        self.loadObject(file_path)
-
-
-    def setRotation(self, 
-                     pitch_min: float, 
-                     pitch_max: float, 
-                     yaw_min: float, 
-                     yaw_max: float,
-                     roll_min: float,
-                     roll_max: float) -> None:
-        self.pitch_min = pitch_min
-        self.pitch_max = pitch_max
-        self.yaw_min   = yaw_min
-        self.yaw_max   = yaw_max
-        self.roll_min  = roll_min
-        self.roll_max  = roll_max
-
-
-    def setTranslation(self,
-                        vecA: List[float],
-                        vecB: List[float]) -> None:
-        self.min_translation = torch.tensor(vecA, device=self._device)
-        self.max_translation = torch.tensor(vecB, device=self._device)
-
-
-    def setScale(self,
-                  vecA: torch.tensor,
-                  vecB: torch.tensor) -> None:
-        self.min_scale = torch.tensor(vecA, device=self._device)
-        self.max_scale = torch.tensor(vecB, device=self._device)
-
-
-    def loadObject(self, file_path: str) -> None:
-        object_dict = utils_io.read_config_yaml(file_path)
-        self.setVertices(object_dict["vertices"])
-        self.setAnimation(object_dict["vertex_offsets"], bool(object_dict["replace_vertices"]))
-        self.setScale(object_dict["min_scale"], object_dict["max_scale"])
-        self.setTranslation(object_dict["min_translation"], object_dict["max_translation"])
-        self.setRotation(float(object_dict["min_pitch"]),
-                        float(object_dict["max_pitch"]),
-                        float(object_dict["min_yaw"]),
-                        float(object_dict["max_yaw"]),
-                        float(object_dict["min_roll"]),
-                        float(object_dict["max_roll"]))
+class Randomizable:
+    def __init__(self, base_path: str, 
+                 name: str, 
+                 config: dict, 
+                 vertex_data: List[float], 
+                 device: torch.cuda.device = torch.device("cuda")):
         
-        self._animated = bool(object_dict["animated"])
+        self._device = device
+
+        self.setVertices(vertex_data)
+        self.setScale(config["scale"])
+        self.setTranslation(config["translation"])
+        self.setRotation(config["rotation"])
+        
+        self._animated = bool(config["animated"])
         if self._animated:
-            self._animated = True
-            self.setAnimation(object_dict["vertex_offsets"]), bool(object_dict["replace_vertices"])
-    
+            self.loadAnimation(base_path, name)
+
+    def setVertices(self, vertices: List[float]) -> None:
+        self._vertices = torch.tensor(vertices, device=self._device).reshape(-1, 3)
+
+
+    def loadAnimation(self, base_path, obj_name):
+        self._vertex_offsets = []        
+        for file in sorted(os.listdir(os.path.join(base_path, obj_name + "/"))):
+            if file.endswith(".obj"):
+                obj_path = os.path.join(base_path, obj_name, file)
+                print(os.path.join(base_path, obj_name, file))
+
+
+    def sampleAnimation(self) -> torch.tensor:
+        num_anim_frames = self._vertex_offsets.shape[0]
+        rand_index = random.randint(0, num_anim_frames - 1)
+
+        return self._vertex_offsets[rand_index]
+
+    def setRotation(self, rotation: dict) -> None:
+        self.rot_min_x = rotation["min_x"]
+        self.rot_max_x = rotation["max_x"]
+        self.rot_min_y   = rotation["min_y"]
+        self.rot_max_y   = rotation["max_y"]
+        self.rot_min_z  = rotation["min_z"]
+        self.rot_max_z  = rotation["max_z"]
+
+
+    def setTranslation(self, translation: dict) -> None:
+        self.min_translation = torch.tensor([translation["min_x"], translation["min_y"], translation["min_z"]], device=self._device)
+        self.max_translation = torch.tensor([translation["max_x"], translation["max_y"], translation["max_z"]], device=self._device)
+
+
+    def setScale(self, scale: dict) -> None:
+        self.min_scale = torch.tensor([scale["min_x"], scale["min_y"], scale["min_z"]], device=self._device)
+        self.max_scale = torch.tensor([scale["max_x"], scale["max_y"], scale["max_z"]], device=self._device)
+
 
     def sampleScale(self) -> torch.tensor:
         scaleMatrix = torch.eye(4, device=self._device)
@@ -176,15 +178,15 @@ class RandomizableEntity(BaseEntity):
 
 
     def sampleRotation(self) -> torch.tensor:
-        pitch = utils_math.uniformBetweenValues(self.pitch_min, self.pitch_max)
-        yaw = utils_math.uniformBetweenValues(self.yaw_min, self.yaw_max)
-        roll = utils_math.uniformBetweenValues(self.roll_min, self.roll_max)
+        xRot = utils_math.uniformBetweenValues(self.rot_min_x, self.rot_max_x)
+        yRot = utils_math.uniformBetweenValues(self.rot_min_y, self.rot_max_y)
+        zRot = utils_math.uniformBetweenValues(self.rot_min_z, self.rot_max_z)
 
-        yaw_mat   = utils_math.getYawTransform(yaw, self._device)
-        pitch_mat = utils_math.getPitchTransform(pitch, self._device)
-        roll_mat  = utils_math.getRollTransform(roll, self._device)
+        zMat   = utils_math.getYawTransform(zRot, self._device)
+        yMat = utils_math.getPitchTransform(yRot, self._device)
+        xMat  = utils_math.getRollTransform(xRot, self._device)
 
-        self._last_rotation = yaw_mat @ pitch_mat @ roll_mat
+        self._last_rotation = zMat @ yMat @ xMat
         return self._last_rotation
 
 
