@@ -8,6 +8,8 @@ import numpy as np
 import intersections
 import torch
 import entity
+import Firefly
+import os
 from tqdm import tqdm
 
 
@@ -26,37 +28,14 @@ def sample_probability_distribution(
     return chosen_points, variance_map
 
 
-def random_depth_maps(project_path, num_maps: int = 100) -> np.array:
-    scene = mi.load_file(project_path + "scene.xml")
-    params = mi.traverse(scene)
-
-    # TODO: Load scene randomizer configs
-    # scene_randomizer = SceneRandomizer(project_path, scene)
-    # scene_randomizer.generateScene()
-
-    rand_obj = entity.RandomizableEntity("test_random_object.yaml")
-    verts_base = params["PLYMesh.vertex_positions"]
-    rand_obj.setVertices(torch.tensor(verts_base).reshape(-1, 3).tolist())
-
-    # Init once to not get nan values
-    #vertex_data = rand_obj.getVertexData()
-    #params["PLYMesh.vertex_positions"] = mi.Float32(vertex_data.flatten())
-    #params.update()
-
-
+def random_depth_maps(firefly_scene, mitsuba_scene, num_maps: int = 100) -> np.array:
     stacked_depth_maps = []
     for i in tqdm(range(num_maps)):
-        # TODO: Generate randomized scene!
+        firefly_scene.randomize()
 
-        vertex_data = rand_obj.getVertexData()
-        params["PLYMesh.vertex_positions"] = mi.Float32(vertex_data.flatten())
-        params.update()
-
-        depth_map = hello_world.get_depth_map(scene, spp=10)
+        depth_map = hello_world.get_depth_map(mitsuba_scene, spp=10)
         stacked_depth_maps.append(depth_map)
 
-        #if i % 10 == 0 and i < num_maps - 10:
-        #    dr.registry_clear()
 
     return np.stack(stacked_depth_maps)
 
@@ -121,16 +100,20 @@ def laser_from_variance_map(sensor,
 
 
 def test():
-    project_path = "TestScene/"
-    num_depth_maps = 150
+    base_path = "/home/nu94waro/Desktop/TestMitsubaScene/"
+    num_depth_maps = 1000
     num_point_samples = 15000
     laser_origin = np.array([[5.0, 0.0, 0.0]])
     weight = 0.001
     save_images = True
-    scene = mi.load_file(project_path + "scene.xml")
+
+    mitsuba_scene = mi.load_file(os.path.join(base_path, "scene.xml"))
+    mitsuba_params = mi.traverse(mitsuba_scene)
+    firefly_scene = Firefly.Scene(mitsuba_params, base_path)
+
 
     # Generate random depth maps by uniformly sampling from scene parameter ranges
-    depth_maps = random_depth_maps(project_path, num_maps=num_depth_maps)
+    depth_maps = random_depth_maps(firefly_scene, mitsuba_scene, num_maps=num_depth_maps)
 
     # Given depth maps, sample linearized random coordinates for laser pattern
     chosen_points, variance_map = sample_probability_distribution(depth_maps, num_point_samples, weight)
@@ -141,7 +124,7 @@ def test():
         variance_map.reshape(-1, 3)[chosen_points, :] = ~variance_map.reshape(-1, 3)[chosen_points, :]
         cv2.imwrite("sampling_map.png", variance_map)
 
-    laser_dir = laser_from_variance_map(scene.sensors()[0],
+    laser_dir = laser_from_variance_map(mitsuba_scene.sensors()[0],
                             laser_origin,
                             depth_maps,
                             variance_map,

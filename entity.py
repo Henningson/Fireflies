@@ -4,9 +4,10 @@ import utils_math
 import utils_torch
 import transforms_torch
 import random
-from typing import List
+from typing import List, Tuple
 import os
-
+import pywavefront
+import numpy as np
 
 class BaseEntity:
     def __init__(self, base_path: str, name: str, config: dict, vertex_data: List[float], device: torch.cuda.device = torch.device("cuda")):
@@ -24,7 +25,7 @@ class BaseEntity:
         self._animated = bool(config["animated"])
         if self._animated:
             self._animated = True
-            self.setAnimation(config["vertex_offsets"]), bool(config["replace_vertices"])
+            self.setAnimation(config["vertex_offsets"])
 
 
     def setRotation(self, 
@@ -59,11 +60,9 @@ class BaseEntity:
         self._scale[2, 2] = vec[2]
 
 
-    def setAnimation(self,
-                    vertex_offsets: torch.tensor,
-                    replace_vertices: bool = False) -> None:
+    def setAnimation(self, vertex_offsets: torch.tensor) -> None:
         self._vertex_offsets = torch.tensor(vertex_offsets, device=self._device)
-        self._replace_vertices = replace_vertices
+
 
     def setVertices(self, vertices: List[float]) -> None:
         self._vertices = torch.tensor(vertices, device=self._device).reshape(-1, 3)
@@ -79,15 +78,12 @@ class BaseEntity:
         num_anim_frames = self._vertex_offsets.shape[0]
         rand_index = random.randint(0, num_anim_frames - 1)
 
-        if self._replace_vertices:
-            return self._vertex_offsets[rand_index]
-        
-        return self._vertices + self._vertex_offsets[rand_index]
+        return self._vertex_offsets[rand_index]
 
 
     def getVertexData(self) -> torch.tensor:
         # Sample Animations
-        temp_vertex = self.sampleAnimation() if self._animated else self._vertices 
+        temp_vertex = self.sampleAnimation()
 
         # Scale Object
         temp_vertex = transforms_torch.transform_points(temp_vertex, self._scale)
@@ -135,18 +131,28 @@ class Randomizable:
 
 
     def loadAnimation(self, base_path, obj_name):
-        self._vertex_offsets = []        
+        self._vertex_offsets = []
+        self._face_data = []    
         for file in sorted(os.listdir(os.path.join(base_path, obj_name + "/"))):
             if file.endswith(".obj"):
                 obj_path = os.path.join(base_path, obj_name, file)
                 print(os.path.join(base_path, obj_name, file))
 
+                obj = pywavefront.Wavefront(obj_path, collect_faces=True)
 
-    def sampleAnimation(self) -> torch.tensor:
-        num_anim_frames = self._vertex_offsets.shape[0]
+                self._vertex_offsets.append(torch.tensor(obj.vertices, device=self._device).reshape(-1, 3))
+                self._face_data.append(torch.tensor(obj.mesh_list[0].faces, device=self._device).flatten())
+                
+
+
+    def sampleAnimation(self):
+        if not self._animated:
+            return self._vertices, None
+
+        num_anim_frames = len(self._vertex_offsets)
         rand_index = random.randint(0, num_anim_frames - 1)
 
-        return self._vertex_offsets[rand_index]
+        return self._vertex_offsets[rand_index], self._face_data[rand_index]
 
     def setRotation(self, rotation: dict) -> None:
         self.rot_min_x = rotation["min_x"]
@@ -203,10 +209,10 @@ class Randomizable:
 
     def getVertexData(self) -> torch.tensor:
         # Sample Animations
-        temp_vertex = self.sampleAnimation() if self._animated else self._vertices 
+        temp_vertex, temp_faces = self.sampleAnimation()
 
         # Scale Object
-        temp_vertex = transforms_torch.transform_points(temp_vertex, self.sampleScale())
+        temp_vertex = transforms_torch.transform_points(temp_vertex.reshape(-1, 3), self.sampleScale())
 
         # Rotate Object
         rotMat = self.sampleRotation()
@@ -216,7 +222,7 @@ class Randomizable:
         # Translate Object
         temp_vertex = transforms_torch.transform_points(temp_vertex, self.sampleTranslation())
 
-        return temp_vertex
+        return temp_vertex, temp_faces
 
     def rotation(self) -> torch.tensor:
         return self._last_rotation

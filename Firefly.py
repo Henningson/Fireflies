@@ -9,7 +9,7 @@ dr.set_flag(dr.JitFlag.LoopRecord, False)
 import entity
 import torch
 
-class FireflyScene:
+class Scene:
     def __init__(self, scene_params, base_path: str, device: torch.cuda.device = torch.device("cuda")):
         self.mi_xml = self.getMitsubaXML(base_path + "scene.xml")
         self.firefly_path = os.path.join(base_path, "Firefly")
@@ -72,8 +72,11 @@ class FireflyScene:
 
     def randomizeMeshes(self):
         for key, mesh in self.customizable_meshes.items():
-            randomized_vertex_data = mesh.getVertexData()
-            self.scene_params[key + ".vertex_positions"] = mi.Float32(randomized_vertex_data.flatten())
+            rand_verts, rand_faces = mesh.getVertexData()
+            self.scene_params[key + ".vertex_positions"] = mi.Float32(rand_verts.flatten())
+
+            if rand_faces is not None:
+                self.scene_params[key + ".faces"] = mi.UInt32(rand_faces.cpu().numpy())
 
 
     def randomizeCamera(self):
@@ -103,20 +106,26 @@ class FireflyScene:
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
+    import numpy as np
 
     base_path = "/home/nu94waro/Desktop/TestMitsubaScene/"
     mitsuba_scene = mi.load_file(os.path.join(base_path, "scene.xml"))
     mitsuba_params = mi.traverse(mitsuba_scene)
 
+    obj_path = os.path.join(base_path, "Firefly", "Cloth",  "Cloth_000000.obj")
+    #scene = pywavefront.Wavefront(obj_path, collect_faces=True)
 
-    render_gt = mi.render(mitsuba_scene, spp=1)
-    image_gt = mi.util.convert_to_bitmap(render_gt)
-
-    print("Init | GT | Depth")
-    plt.axis("off")
-    plt.title("GT")
-    plt.imshow(image_gt)
-    plt.show(block=True)
+    render_one = mi.render(mitsuba_scene, spp=1)
+    image_one = mi.util.convert_to_bitmap(render_one)
 
     scene = FireflyScene(mitsuba_params, base_path)
     scene.randomize()
+
+
+    render_two = mi.render(mitsuba_scene, spp=1)
+    image_two = mi.util.convert_to_bitmap(render_two)
+    print("Init | GT | Depth")
+    plt.axis("off")
+    plt.title("GT")
+    plt.imshow(np.hstack([image_one, image_two]))
+    plt.show(block=True)
