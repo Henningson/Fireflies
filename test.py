@@ -101,7 +101,9 @@ def laser_from_variance_map(sensor,
 
 def test():
     base_path = "/home/nu94waro/Desktop/TestMitsubaScene/"
-    num_depth_maps = 1000
+    num_depth_maps = 150
+    steps_per_frame = 1
+    sequentially_updated = True
     num_point_samples = 15000
     laser_origin = np.array([[5.0, 0.0, 0.0]])
     weight = 0.001
@@ -109,7 +111,10 @@ def test():
 
     mitsuba_scene = mi.load_file(os.path.join(base_path, "scene.xml"))
     mitsuba_params = mi.traverse(mitsuba_scene)
-    firefly_scene = Firefly.Scene(mitsuba_params, base_path)
+    firefly_scene = Firefly.Scene(mitsuba_params, 
+                                  base_path, 
+                                  sequential_animation=sequentially_updated, 
+                                  steps_per_frame=steps_per_frame)
 
 
     # Generate random depth maps by uniformly sampling from scene parameter ranges

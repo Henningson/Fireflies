@@ -10,7 +10,12 @@ import entity
 import torch
 
 class Scene:
-    def __init__(self, scene_params, base_path: str, device: torch.cuda.device = torch.device("cuda")):
+    def __init__(self, 
+                 scene_params, 
+                 base_path: str, 
+                 sequential_animation: bool = False, 
+                 steps_per_frame: int = 1, 
+                 device: torch.cuda.device = torch.device("cuda")):
         self.mi_xml = self.getMitsubaXML(base_path + "scene.xml")
         self.firefly_path = os.path.join(base_path, "Firefly")
         self.scene_params = scene_params
@@ -21,8 +26,11 @@ class Scene:
         self.customizable_lights = {}
         self._device = device
 
-        self.initScene()
+        self._num_updates = 0
+        self._sequential_animation = sequential_animation
+        self._steps_per_frame = steps_per_frame
 
+        self.initScene()
 
     def getMitsubaXML(self, path):
         data = None
@@ -61,6 +69,7 @@ class Scene:
                                                                             mesh_name, 
                                                                             mesh_config, 
                                                                             self.scene_params[temp_param_mesh + ".vertex_positions"], 
+                                                                            self._sequential_animation,
                                                                             self._device)
 
 
@@ -72,11 +81,16 @@ class Scene:
 
     def randomizeMeshes(self):
         for key, mesh in self.customizable_meshes.items():
+
             rand_verts, rand_faces = mesh.getVertexData()
             self.scene_params[key + ".vertex_positions"] = mi.Float32(rand_verts.flatten())
 
             if rand_faces is not None:
                 self.scene_params[key + ".faces"] = mi.UInt32(rand_faces.cpu().numpy())
+
+            if mesh.is_animated():
+                if self._num_updates % self._steps_per_frame == 0:
+                    mesh.next_anim_step()
 
 
     def randomizeCamera(self):
@@ -95,6 +109,8 @@ class Scene:
         self.randomizeLights()        
         self.scene_params.update()
 
+        self._num_updates += 1
+
 
     def getMeshName(self, mesh) -> str:
         for child in mesh.find_all("string"):
@@ -107,25 +123,18 @@ class Scene:
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
     import numpy as np
+    import cv2
 
     base_path = "/home/nu94waro/Desktop/TestMitsubaScene/"
+    sequential = True
+
     mitsuba_scene = mi.load_file(os.path.join(base_path, "scene.xml"))
     mitsuba_params = mi.traverse(mitsuba_scene)
+    firefly_scene = Scene(mitsuba_params, base_path, sequential_animation=sequential)
 
-    obj_path = os.path.join(base_path, "Firefly", "Cloth",  "Cloth_000000.obj")
-    #scene = pywavefront.Wavefront(obj_path, collect_faces=True)
-
-    render_one = mi.render(mitsuba_scene, spp=1)
-    image_one = mi.util.convert_to_bitmap(render_one)
-
-    scene = FireflyScene(mitsuba_params, base_path)
-    scene.randomize()
-
-
-    render_two = mi.render(mitsuba_scene, spp=1)
-    image_two = mi.util.convert_to_bitmap(render_two)
-    print("Init | GT | Depth")
-    plt.axis("off")
-    plt.title("GT")
-    plt.imshow(np.hstack([image_one, image_two]))
-    plt.show(block=True)
+    for i in range(150):
+        firefly_scene.randomize()
+        render = mi.render(mitsuba_scene, spp=1)
+        image = mi.util.convert_to_bitmap(render)
+        cv2.imshow("Image", np.array(image))
+        cv2.waitKey(0)

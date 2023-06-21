@@ -112,7 +112,8 @@ class Randomizable:
     def __init__(self, base_path: str, 
                  name: str, 
                  config: dict, 
-                 vertex_data: List[float], 
+                 vertex_data: List[float],
+                 sequential_animation: bool = False,
                  device: torch.cuda.device = torch.device("cuda")):
         
         self._device = device
@@ -121,10 +122,13 @@ class Randomizable:
         self.setScale(config["scale"])
         self.setTranslation(config["translation"])
         self.setRotation(config["rotation"])
-        
         self._animated = bool(config["animated"])
+        self._sequential_animation = sequential_animation
+
         if self._animated:
+            self._animation_index = 0
             self.loadAnimation(base_path, name)
+
 
     def setVertices(self, vertices: List[float]) -> None:
         self._vertices = torch.tensor(vertices, device=self._device).reshape(-1, 3)
@@ -144,15 +148,23 @@ class Randomizable:
                 self._face_data.append(torch.tensor(obj.mesh_list[0].faces, device=self._device).flatten())
                 
 
+    def next_anim_step(self) -> None:
+        self._animation_index += 1
+
 
     def sampleAnimation(self):
         if not self._animated:
             return self._vertices, None
 
-        num_anim_frames = len(self._vertex_offsets)
-        rand_index = random.randint(0, num_anim_frames - 1)
+        index = 0
+        if self._sequential_animation:
+            index = self._animation_index
+        else:    
+            num_anim_frames = len(self._vertex_offsets)
+            index = random.randint(0, num_anim_frames - 1)
 
-        return self._vertex_offsets[rand_index], self._face_data[rand_index]
+        return self._vertex_offsets[index], self._face_data[index]
+
 
     def setRotation(self, rotation: dict) -> None:
         self.rot_min_x = rotation["min_x"]
@@ -224,12 +236,16 @@ class Randomizable:
 
         return temp_vertex, temp_faces
 
+
     def rotation(self) -> torch.tensor:
         return self._last_rotation
     
+
     def translation(self) -> torch.tensor:
         return self._last_translation
 
+    def is_animated(self) -> bool:
+        return self._animated
 
 
 
