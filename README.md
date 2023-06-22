@@ -9,18 +9,24 @@ Library for the generation and optimization of domain-specific laser pattern for
 ✅ Export Translation, Rotation, Scale Constraints from Blender  
 ✅ Import Translation, Rotation, Scale Constraints in Firefly  
 ✅ Apply Random Transformations  
+✅ Sequential Randomization  
 ❌ Randomize Position along Curves/Splines  
 
 ## Camera
 ✅ Randomizable Position, Rotation  
 ✅ Export Translation, Position Constraints  
 ❌ Import and apply randomized translation, position  
-❌ Allow sampling from spline  
+❌ Randomize Position along Curves/Splines 
 
 ## Projector/Laser
-❌ Export from Blender  
+✅ Export from Blender  
 ❌ Import in Firefly  
 ❌ Apply Cameras Transformation  
+
+## Relative Objects
+✅ Export  
+❌ Loading in Firefly  
+❌ Including Constraints into local transformations
 
 ## Initialization
 ✅ Randomized Depth Maps  

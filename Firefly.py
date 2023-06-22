@@ -16,14 +16,18 @@ class Scene:
                  sequential_animation: bool = False, 
                  steps_per_frame: int = 1, 
                  device: torch.cuda.device = torch.device("cuda")):
+        
         self.mi_xml = self.getMitsubaXML(base_path + "scene.xml")
         self.firefly_path = os.path.join(base_path, "Firefly")
         self.scene_params = scene_params
 
         self.base_path = base_path
-        self.customizable_meshes = {}
-        self.customizable_camera = None
-        self.customizable_lights = {}
+
+        # Here, only objects are saved, that have a "randomizable"-tag inside the yaml file.
+        self.meshes = {}
+        self.projector = None
+        self.camera = None
+        self.lights = {}
         self._device = device
 
         self._num_updates = 0
@@ -38,18 +42,47 @@ class Scene:
             data = f.read()
         return BeautifulSoup(data, "xml")
 
-    
-    def loadRandomizableCamera(self):
-        # TODO: Implement me
-        pass
+
+    def loadProjector(self):
+        # TODO: Allow loading of multiple cameras
+        #param_camera = "PerspectiveCamera"
+
+        # In this case, we enfore the name Camera
+        sensor_name = "Projector"
+        sensor_yaml_path = os.path.join(self.firefly_path, sensor_name + ".yaml")
+        sensor_config = utils_io.read_config_yaml(sensor_yaml_path)
+
+        if self.camera is None:
+            return
+        
+            # Object is randomizable => Create randomizable object, and connect it to the parameter.
+        self.projector = entity.RandomizableProjector(sensor_config, self._device)
+        self.projector.setParent(self.camera)
 
     
-    def loadRandomizableLights(self):
+    def loadCameras(self):
+        # TODO: Allow loading of multiple cameras
+        #param_camera = "PerspectiveCamera"
+
+        # In this case, we enfore the name Camera
+        sensor_name = "Camera"
+        sensor_yaml_path = os.path.join(self.firefly_path, sensor_name + ".yaml")
+        sensor_config = utils_io.read_config_yaml(sensor_yaml_path)
+
+        if not sensor_config["randomizable"]:
+            return
+
+            # Object is randomizable => Create randomizable object, and connect it to the parameter.
+        self.camera = entity.RandomizableCamera(sensor_config, self._device)
+        
+    
+    def loadLights(self):
         # TODO: Implement me
+        a = 1
         pass
 
 
-    def loadRandomizableMeshes(self):
+    def loadMeshes(self):
         meshes = self.mi_xml.find_all('shape')
         param_mesh = "PLYMesh"
         for count, mesh in enumerate(meshes):
@@ -63,9 +96,9 @@ class Scene:
 
             if not mesh_config["randomizable"]:
                 continue
-
-            # Object is randomizable => Create randomizable object, and connect it to the parameter.
-            self.customizable_meshes[temp_param_mesh] = entity.Randomizable(self.firefly_path, 
+            
+            # Object is randomizable => Create randomizable object, and connect it to the mitsuba parameter.
+            self.meshes[temp_param_mesh] = entity.Randomizable(self.firefly_path, 
                                                                             mesh_name, 
                                                                             mesh_config, 
                                                                             self.scene_params[temp_param_mesh + ".vertex_positions"], 
@@ -73,14 +106,15 @@ class Scene:
                                                                             self._device)
 
 
-    def initScene(self):
-        self.loadRandomizableMeshes()
-        self.loadRandomizableCamera()
-        self.loadRandomizableLights()
+    def initScene(self) -> None:
+        self.loadMeshes()
+        self.loadCameras()
+        self.loadProjector
+        self.loadLights()
 
 
-    def randomizeMeshes(self):
-        for key, mesh in self.customizable_meshes.items():
+    def randomizeMeshes(self) -> None:
+        for key, mesh in self.meshes.items():
 
             rand_verts, rand_faces = mesh.getVertexData()
             self.scene_params[key + ".vertex_positions"] = mi.Float32(rand_verts.flatten())
@@ -93,19 +127,43 @@ class Scene:
                     mesh.next_anim_step()
 
 
-    def randomizeCamera(self):
+    def randomizeCamera(self) -> None:
+        if self.camera is None:
+            return
+
+        key = "PerspectiveCamera"
+        worldMatrix = self.camera.getTransforms()
+
+        # TODO: Is there a better way here?
+        # Couldn't find a better way to get this torch tensor into mitsuba Transform4f
+        self.scene_params[key + ".to_world"] = mi.Transform4f(worldMatrix.tolist())
+
+
+    def randomizeProjector(self) -> None:
+        if self.projector is None:
+            return
+        
+        if self.projector._parent is None:
+            return
+        
+        # TODO: Get rid of hardcoded stuff here.
+        key = "PerspectiveCamera_1"
+        worldMatrix = self.projector.getTransforms()
+
+        # TODO: Is there a better way here?
+        # Couldn't find a better way to get this torch tensor into mitsuba Transform4f
+        self.scene_params[key + ".to_world"] = mi.Transform4f(worldMatrix.tolist())
+
+
+    def randomizeLights(self) -> None:
         # TODO: Implement me
         return None
 
 
-    def randomizeLights(self):
-        # TODO: Implement me
-        return None
-
-
-    def randomize(self):
+    def randomize(self) -> None:
         self.randomizeMeshes()
         self.randomizeCamera()
+        self.randomizeProjector()
         self.randomizeLights()        
         self.scene_params.update()
 

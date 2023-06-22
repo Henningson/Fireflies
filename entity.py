@@ -13,7 +13,6 @@ class BaseEntity:
     def __init__(self, base_path: str, name: str, config: dict, vertex_data: List[float], device: torch.cuda.device = torch.device("cuda")):
         self._device = device
 
-
         self.setVertices(vertex_data)
         self.setScale(config["scale"])
         self.setTranslation(config["translation"])
@@ -107,6 +106,161 @@ class BaseEntity:
         return self._translation
 
 
+class RandomizableCamera:
+    def __init__(self,
+                 config: dict,
+                 device: torch.cuda.device = torch.device("cuda")):
+        
+        self._device = device
+        self._animated = False
+
+        self.setTranslationLimits(config["translation"])
+        self.setRotationLimits(config["rotation"])
+        self.setWorld(config["to_world"])
+
+
+    def setWorld(self, to_world: List[List[float]]) -> None:
+        self._to_world = torch.tensor(to_world, device=self._device)
+
+
+    def setRotationLimits(self, rotation: dict) -> None:
+        self.rot_min_x = rotation["min_x"]
+        self.rot_max_x = rotation["max_x"]
+        self.rot_min_y   = rotation["min_y"]
+        self.rot_max_y   = rotation["max_y"]
+        self.rot_min_z  = rotation["min_z"]
+        self.rot_max_z  = rotation["max_z"]
+
+
+    def setTranslationLimits(self, translation: dict) -> None:
+        self.min_translation = torch.tensor([translation["min_x"], translation["min_y"], translation["min_z"]], device=self._device)
+        self.max_translation = torch.tensor([translation["max_x"], translation["max_y"], translation["max_z"]], device=self._device)
+
+
+    def sampleRotation(self) -> torch.tensor:
+        xRot = utils_math.uniformBetweenValues(self.rot_min_x, self.rot_max_x)
+        yRot = utils_math.uniformBetweenValues(self.rot_min_y, self.rot_max_y)
+        zRot = utils_math.uniformBetweenValues(self.rot_min_z, self.rot_max_z)
+
+        zMat   = utils_math.getYawTransform(zRot, self._device)
+        yMat = utils_math.getPitchTransform(yRot, self._device)
+        xMat  = utils_math.getRollTransform(xRot, self._device)
+
+        self._last_rotation = zMat @ yMat @ xMat
+        return self._last_rotation
+
+
+    def sampleTranslation(self) -> torch.tensor:
+        self._last_translation = utils_torch.randomBetweenTensors(self.min_translation, self.max_translation)
+        return self._last_translation
+
+
+    def getTransforms(self) -> torch.tensor:
+        # Rotate Object
+        randomTransform = self.sampleRotation()
+        randomTransform = transforms_torch.toMat4x4(randomTransform)
+        randomTranslation = self.sampleTranslation()
+
+        randomTransform[0, 3] = randomTranslation[0]
+        randomTransform[1, 3] = randomTranslation[1]
+        randomTransform[2, 3] = randomTranslation[1]
+
+        return self._to_world @ randomTransform
+
+
+    def rotation(self) -> torch.tensor:
+        return self._last_rotation
+    
+    def translation(self) -> torch.tensor:
+        return self._last_translation
+
+    def is_animated(self) -> bool:
+        return self._animated
+
+
+class Projector:
+    def __init__(self,
+                 config: dict,
+                 device: torch.cuda.device = torch.device("cuda")):
+        
+        self._device = device
+        self._animated = False
+        self._parent = None
+        self.setTranslation(config["translation"])
+        self.setRotation(config["rotation"])
+
+
+    def setParent(self, parent: RandomizableCamera) -> None:
+        self._parent = parent
+    
+
+    def setRotation(self, rotation: dict) -> None:
+        self.rot_min_x = rotation["min_x"]
+        self.rot_max_x = rotation["max_x"]
+        self.rot_min_y   = rotation["min_y"]
+        self.rot_max_y   = rotation["max_y"]
+        self.rot_min_z  = rotation["min_z"]
+        self.rot_max_z  = rotation["max_z"]
+
+
+    def setTranslation(self, translation: dict) -> None:
+        self.min_translation = torch.tensor([translation["min_x"], translation["min_y"], translation["min_z"]], device=self._device)
+        self.max_translation = torch.tensor([translation["max_x"], translation["max_y"], translation["max_z"]], device=self._device)
+
+
+    def sampleRotation(self) -> torch.tensor:
+        xRot = utils_math.uniformBetweenValues(self.rot_min_x, self.rot_max_x)
+        yRot = utils_math.uniformBetweenValues(self.rot_min_y, self.rot_max_y)
+        zRot = utils_math.uniformBetweenValues(self.rot_min_z, self.rot_max_z)
+
+        zMat   = utils_math.getYawTransform(zRot, self._device)
+        yMat = utils_math.getPitchTransform(yRot, self._device)
+        xMat  = utils_math.getRollTransform(xRot, self._device)
+
+        self._last_rotation = zMat @ yMat @ xMat
+        return self._last_rotation
+
+
+    def sampleTranslation(self) -> torch.tensor:
+        self._last_translation = utils_torch.randomBetweenTensors(self.min_translation, self.max_translation)
+        return self._last_translation
+
+
+    def getTransforms(self) -> torch.tensor:
+        parentMat = self._parent.getTransforms()
+
+        randomTransform = self.sampleRotation()
+        randomTransform = transforms_torch.toMat4x4(randomTransform)
+        randomTranslation = self.sampleTranslation()
+
+        randomTransform[3, 0] = randomTranslation[0]
+        randomTransform[3, 1] = randomTranslation[1]
+        randomTransform[3, 2] = randomTranslation[1]
+
+
+        return parentMat @ self._
+    
+
+    def getWorldMat(self) -> torch.tensor:
+        translation, rotMat = self.getTransforms()
+        rotMat = transforms_torch.toMat4x4(rotMat)
+        
+        rotMat[0, 3] = translation[0]
+        rotMat[1, 3] = translation[1]
+        rotMat[2, 3] = translation[2]
+        return rotMat
+
+
+    def rotation(self) -> torch.tensor:
+        return self._last_rotation
+    
+    def translation(self) -> torch.tensor:
+        return self._last_translation
+
+    def is_animated(self) -> bool:
+        return self._animated
+
+
 
 class Randomizable:
     def __init__(self, base_path: str, 
@@ -158,7 +312,7 @@ class Randomizable:
 
         index = 0
         if self._sequential_animation:
-            index = self._animation_index
+            index = self._animation_index % len(self._vertex_offsets)
         else:    
             num_anim_frames = len(self._vertex_offsets)
             index = random.randint(0, num_anim_frames - 1)
@@ -169,10 +323,10 @@ class Randomizable:
     def setRotation(self, rotation: dict) -> None:
         self.rot_min_x = rotation["min_x"]
         self.rot_max_x = rotation["max_x"]
-        self.rot_min_y   = rotation["min_y"]
-        self.rot_max_y   = rotation["max_y"]
-        self.rot_min_z  = rotation["min_z"]
-        self.rot_max_z  = rotation["max_z"]
+        self.rot_min_y = rotation["min_y"]
+        self.rot_max_y = rotation["max_y"]
+        self.rot_min_z = rotation["min_z"]
+        self.rot_max_z = rotation["max_z"]
 
 
     def setTranslation(self, translation: dict) -> None:
