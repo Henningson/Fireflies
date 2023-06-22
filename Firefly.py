@@ -56,7 +56,7 @@ class Scene:
             return
         
             # Object is randomizable => Create randomizable object, and connect it to the parameter.
-        self.projector = entity.RandomizableProjector(sensor_config, self._device)
+        self.projector = entity.Projector(sensor_config, self._device)
         self.projector.setParent(self.camera)
 
     
@@ -109,7 +109,7 @@ class Scene:
     def initScene(self) -> None:
         self.loadMeshes()
         self.loadCameras()
-        self.loadProjector
+        self.loadProjector()
         self.loadLights()
 
 
@@ -147,7 +147,7 @@ class Scene:
             return
         
         # TODO: Get rid of hardcoded stuff here.
-        key = "PerspectiveCamera_1"
+        key = "Projector"
         worldMatrix = self.projector.getTransforms()
 
         # TODO: Is there a better way here?

@@ -165,8 +165,11 @@ class RandomizableCamera:
         randomTransform[1, 3] = randomTranslation[1]
         randomTransform[2, 3] = randomTranslation[1]
 
-        return self._to_world @ randomTransform
+        self._last_transform = self._to_world @ randomTransform
+        return self._last_transform
 
+    def getLastTransform(self):
+        return self._last_transform
 
     def rotation(self) -> torch.tensor:
         return self._last_rotation
@@ -188,7 +191,10 @@ class Projector:
         self._parent = None
         self.setTranslation(config["translation"])
         self.setRotation(config["rotation"])
+        self.setWorld(config["to_world"])
 
+    def setWorld(self, to_world: List[List[float]]) -> None:
+        self._to_world = torch.tensor(to_world, device=self._device)
 
     def setParent(self, parent: RandomizableCamera) -> None:
         self._parent = parent
@@ -227,18 +233,8 @@ class Projector:
 
 
     def getTransforms(self) -> torch.tensor:
-        parentMat = self._parent.getTransforms()
-
-        randomTransform = self.sampleRotation()
-        randomTransform = transforms_torch.toMat4x4(randomTransform)
-        randomTranslation = self.sampleTranslation()
-
-        randomTransform[3, 0] = randomTranslation[0]
-        randomTransform[3, 1] = randomTranslation[1]
-        randomTransform[3, 2] = randomTranslation[1]
-
-
-        return parentMat @ self._
+        parentMat = self._parent.getLastTransform()
+        return parentMat #@ self._to_world
     
 
     def getWorldMat(self) -> torch.tensor:

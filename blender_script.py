@@ -246,7 +246,7 @@ def hacky_xml_append(base_path, projector_fov):
     temp_lines.insert(-1, '        </transform>\n')
     temp_lines.insert(-1, '    </emitter>\n')
     
-    with open(os.path.join(base_path, 'scene.xml'), 'w+') as f:   
+    with open(os.path.join(base_path, 'scene_temp.xml'), 'w+') as f:   
         f.writelines(temp_lines)
         
 
