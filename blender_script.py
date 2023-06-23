@@ -232,7 +232,7 @@ def hacky_xml_append(base_path, projector_fov):
         temp_lines = f.readlines()
 
     temp_lines.insert(-1, '    <texture type="bitmap" id="tex">\n')
-    temp_lines.insert(-1, '        <string name="filename" value="assets/noise_texture.png"/>\n')
+    temp_lines.insert(-1, '        <string name="filename" value="Firefly/assets/init_tex.png"/>\n')
     temp_lines.insert(-1, '    </texture>\n')
     temp_lines.insert(-1, '\n')
     temp_lines.insert(-1, '    <emitter type="projector">\n')
@@ -246,7 +246,7 @@ def hacky_xml_append(base_path, projector_fov):
     temp_lines.insert(-1, '        </transform>\n')
     temp_lines.insert(-1, '    </emitter>\n')
     
-    with open(os.path.join(base_path, 'scene_temp.xml'), 'w+') as f:   
+    with open(os.path.join(base_path, 'scene.xml'), 'w+') as f:   
         f.writelines(temp_lines)
         
 
@@ -277,10 +277,11 @@ def generate_init_texture(base_path: str) -> None:
         os.mkdir(assets_path)
     except:
         print("Path {0} does already exist.".format(assets_path))
-    # TODO: Implement me
     
-    im = np.random.randint(0, 256, size=(512, 512), dtype=np.uint8)
-    cv2.imwrite("init_tex.png", im)
+    
+    print(os.path.join(assets_path, "init_tex.png"))
+    im = np.random.randint(0, 256, size=(bpy.data.scenes[0].render.resolution_y,  bpy.data.scenes[0].render.resolution_x), dtype=np.uint8)
+    print(cv2.imwrite(os.path.join(assets_path, "init_tex.png"), im))
     
 #
 #

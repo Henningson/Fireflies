@@ -168,11 +168,23 @@ def mse(image, image_ref):
 #disp_map = compute_disparity(image, proj)
 
 def main():
-    scene_init = mi.load_file("scenes/proj_cbox.xml", spp=256)
+    scene_init = mi.load_file("TestScene/scene.xml", spp=1)
     params = mi.traverse(scene_init)
 
 
 
+    render_init = mi.render(scene_init, spp=1)
+    image_init = torch.tensor(render_init)[:, :, -1].detach().cpu().numpy()
+    #image_init = mi.util.convert_to_bitmap(render_init)
+
+    print("Init | GT | Depth")
+    plt.axis("off")
+    plt.title("GT")
+    plt.imshow(image_init)
+    plt.show(block=True)
+
+
+    exit()
     '''laser = Laser(100, 100, 0.005, 
                 np.array([[1.0, 0.0, 0.0, 0.0], 
                                 [0.0, 1.0, 0.0, 0.0], 
@@ -185,13 +197,6 @@ def main():
     #projected_points = project_to_camera_space(mi.traverse(scene_init), laser_hit_points)
     #projected_points /= projected_points[:, 2:]
 
-
-    
-    depth = get_depth_map(scene_init)
-
-    render_init = mi.render(scene_init, spp=256)
-    image_init = mi.util.convert_to_bitmap(render_init)
-
     scene_gt   = mi.load_file("TestScene/test_scene.xml", spp=256)
     render_gt = mi.render(scene_gt, spp=256)
     image_gt = mi.util.convert_to_bitmap(render_gt)
@@ -202,11 +207,6 @@ def main():
 
 
 
-    print("Init | GT | Depth")
-    plt.axis("off")
-    plt.title("GT")
-    plt.imshow(np.concatenate([image_init, image_gt, depth], axis=-2))
-    plt.show(block=True)
 
     optimizer = mi.ad.Adam(lr=0.05)
     #optimizer[key_red] = mi.Color3f(params[key_red])

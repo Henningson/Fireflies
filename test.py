@@ -102,7 +102,7 @@ def laser_from_variance_map(sensor,
 def test():
     base_path = "/home/nu94waro/Desktop/TestMitsubaScene/"
     num_depth_maps = 150
-    steps_per_frame = 1
+    steps_per_frame = 5
     sequentially_updated = True
     num_point_samples = 15000
     laser_origin = np.array([[5.0, 0.0, 0.0]])
