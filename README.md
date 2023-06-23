@@ -31,7 +31,7 @@ Generation and optimization of domain-specific laser pattern for single-shot str
 ## Initialization
 ✅ Randomized Depth Maps  
 ✅ Initialization of laser pattern  
-❌ Weighted segmentation maps
+❌ Weighted segmentation maps  
 ❌ Take epipolar lines into account  
 ❌ Laser Pattern FOV constraints  
 ❌ Weighted object significance  
