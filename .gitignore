@@ -168,3 +168,6 @@ scenes*
 *.png
 *.mp4
 *.yaml
+*.obj
+*.jpg
+*.gif

@@ -178,12 +178,16 @@ class Scene:
         return None
     
 
+def generate_epipolar_shadow(scene):
+    pass
+
+
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
     import numpy as np
     import cv2
 
-    base_path = "/home/nu94waro/Desktop/TestMitsubaScene/"
+    base_path = "TestMitsubaScene/"
     sequential = True
 
     mitsuba_scene = mi.load_file(os.path.join(base_path, "scene.xml"))

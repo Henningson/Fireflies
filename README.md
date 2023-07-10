@@ -48,3 +48,5 @@ Generation and optimization of domain-specific laser pattern for single-shot str
 ❌ General correspondence estimation  
 ❌ Optimized correspondence estimation  
 
+## Utils
+❌ Change xml read to yaml -> dict read

@@ -37,3 +37,29 @@ def transform_directions(points: torch.tensor, transform: torch.tensor) -> torch
     points = (transform.unsqueeze(0) @ points.unsqueeze(-1))
     points = torch.squeeze(points, axis=-1)
     return points[..., :-1]
+
+
+
+def matToBlender(mat, device):
+    init_rot = torch.eye(4, device=device)
+    init_rot[0, 0] = -1.0
+    init_rot[2, 2] = -1.0
+    coordinate_shift = torch.eye(4, device=device)
+    coordinate_shift[1, 1] = 0.0
+    coordinate_shift[2, 2] = 0.0
+    coordinate_shift[2, 1] = -1.0
+    coordinate_shift[1, 2] = 1.0
+
+    return coordinate_shift.inverse() @ mat @ init_rot.inverse()
+
+def matToMitsuba(mat, device):
+    init_rot = torch.eye(4, device=device)
+    init_rot[0, 0] = -1.0
+    init_rot[2, 2] = -1.0
+    coordinate_shift = torch.eye(4, device=device)
+    coordinate_shift[1, 1] = 0.0
+    coordinate_shift[2, 2] = 0.0
+    coordinate_shift[2, 1] = -1.0
+    coordinate_shift[1, 2] = 1.0
+
+    return coordinate_shift @ mat @ init_rot

@@ -4,18 +4,32 @@ import torch
 import utils_torch
 import numpy as np
 import math
+import rasterization
 import transforms_np
 import transforms_torch
 
+from typing import List
+
+
 class Laser:
-    def __init__(self, num_beams_x: int, num_beams_y: int, intra_ray_angle: float, to_world: torch.tensor, origin: torch.tensor, max_fov: float = None, near_clip: float = 0.01, far_clip: float = 1000.0, device: torch.cuda.device = torch.device("cuda")):
-        
+    def generate_uniform_rays(intra_ray_angle: float, num_beams_x: int, num_beams_y:int, device: torch.cuda.device = torch.device("cuda")) -> torch.tensor:
+        laserRays = torch.zeros((num_beams_y*num_beams_x, 3), device=device)
+
+        for x in range(num_beams_x):
+            for y in range(num_beams_y):
+                laserRays[x * num_beams_x + y, :] = torch.tensor([
+                    math.tan((x-(num_beams_x - 1) / 2) * intra_ray_angle), 
+                    math.tan((y-(num_beams_y - 1) / 2) * intra_ray_angle), 
+                    1.0])
+
+        return laserRays / torch.linalg.norm(laserRays, dim=-1, keepdims=True)
+
+
+    def __init__(self, to_world: torch.tensor, ray_directions, max_fov: float, near_clip: float = 0.01, far_clip: float = 1000.0, device: torch.cuda.device = torch.device("cuda")):
         self.device = device
-        intra_ray_angle = intra_ray_angle * math.pi / 180
         self._to_world = to_world.to(self.device)
-        self._rays = self.computeRays(intra_ray_angle, num_beams_x, num_beams_y).to(self.device)
-        self._origin = origin.to(self.device)
-        max_fov = num_beams_x*intra_ray_angle if max_fov is None else max_fov
+        self._rays = ray_directions.to(self.device)
+        self._origin = self._to_world[0:3, 3]
         self._perspective = utils_torch.build_projection_matrix(max_fov, near_clip, far_clip).to(self.device)
 
     
@@ -26,19 +40,6 @@ class Laser:
     def origin(self) -> torch.tensor:
         return self._origin
 
-
-    def computeRays(self, intra_ray_angle: float, num_beams_x: int, num_beams_y) -> torch.tensor:
-        laserRays = torch.zeros((num_beams_y*num_beams_x, 3), device=self.device)
-
-        for x in range(num_beams_x):
-            for y in range(num_beams_y):
-                laserRays[x * num_beams_x + y, :] = torch.tensor([
-                    math.tan((x-(num_beams_x - 1) / 2) * intra_ray_angle), 
-                    math.tan((y-(num_beams_y - 1) / 2) * intra_ray_angle), 
-                    1.0])
-
-        return self.normalize(laserRays)
-    
 
     def initRandomRays(self):
         # Spawn random points in [-1.0, 1.0]
@@ -102,10 +103,15 @@ class Laser:
 
 
     def projectRaysToNDC(self) -> torch.tensor:
+        #rays_in_world = transforms_torch.transform_directions(self._rays, self._to_world)
         return transforms_torch.transform_points(self._rays, self._perspective)
     
     def projectNDCPointsToWorld(self, points: torch.tensor) -> torch.tensor:
         return transforms_torch.transform_points(points, self._perspective.inverse())
+    
+    def generateTexture(self, sigma: float, texture_size: List[int]) -> torch.tensor:
+        points = self.projectRaysToNDC()[:, 0:2]
+        return rasterization.rasterize_points(points, sigma, texture_size)
 
 
 if __name__ == "__main__":

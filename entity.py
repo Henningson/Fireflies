@@ -232,37 +232,14 @@ class Projector:
         return self._last_translation
 
 
-    def matToBlender(self, mat):
-        init_rot = torch.eye(4, device=self._device)
-        init_rot[0, 0] = -1.0
-        init_rot[2, 2] = -1.0
-        coordinate_shift = torch.eye(4, device=self._device)
-        coordinate_shift[1, 1] = 0.0
-        coordinate_shift[2, 2] = 0.0
-        coordinate_shift[2, 1] = -1.0
-        coordinate_shift[1, 2] = 1.0
-    
-        return coordinate_shift.inverse() @ mat @ init_rot.inverse()
-
-    def matToMitsuba(self, mat):
-        init_rot = torch.eye(4, device=self._device)
-        init_rot[0, 0] = -1.0
-        init_rot[2, 2] = -1.0
-        coordinate_shift = torch.eye(4, device=self._device)
-        coordinate_shift[1, 1] = 0.0
-        coordinate_shift[2, 2] = 0.0
-        coordinate_shift[2, 1] = -1.0
-        coordinate_shift[1, 2] = 1.0
-
-        return coordinate_shift @ mat @ init_rot
 
 
     def getTransforms(self) -> torch.tensor:
         parentMat = self._parent.getLastTransform()
-        blendParentMat = self.matToBlender(parentMat)
-        blendWorldMat = self.matToBlender(self._to_world)
+        blendParentMat = transforms_torch.matToBlender(parentMat, self._device)
+        blendWorldMat = transforms_torch.matToBlender(self._to_world, self._device)
 
-        relative_world = self.matToMitsuba(blendParentMat @ blendWorldMat)
+        relative_world = transforms_torch.matToMitsuba(blendParentMat @ blendWorldMat, self._device)
 
         return relative_world
     
