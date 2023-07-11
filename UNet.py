@@ -68,7 +68,7 @@ class Encoder(nn.Module):
 
 
 class Model(nn.Module):
-    def __init__(self, config={'in_channels': 3, 'out_channels': 3, 'features': [64, 128, 256, 512]}, state_dict=None, pretrain=False, device="cuda"):
+    def __init__(self, config={'in_channels': 1, 'out_channels': 1, 'features': [32, 64, 128, 256, 512]}, state_dict=None, pretrain=False, device="cuda"):
         super(Model, self).__init__()
         try:
             in_channels = config['in_channels']

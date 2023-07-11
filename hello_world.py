@@ -11,7 +11,7 @@ import transforms_torch
 from laser_torch import Laser
 import math
 import rasterization
-
+import utils_torch
 
 
 
@@ -27,10 +27,10 @@ def cast_laser(scene, laser: Laser) -> torch.tensor:
     rays = laser.rays()
     origin = laser.origin()
 
-    ts = (scene.ray_intersect(mi.Ray3f(o=mi.Vector3f(origin), d=rays))).t
+    ts = (scene.ray_intersect(mi.Ray3f(o=mi.Vector3f(origin.unsqueeze(0)), d=rays))).t
 
-    hit_points = origin + rays*np.expand_dims(ts, -1)
-    hit_points = hit_points[~np.isinf(hit_points).any(axis=1)]
+    hit_points = origin + rays*ts.torch().unsqueeze(-1)
+    hit_points = hit_points[~torch.isinf(hit_points).any(axis=1)]
 
     return hit_points
 
@@ -63,13 +63,18 @@ def build_projection_matrix(params) -> np.array:
     return projection_matrix
 
 
-def project_to_camera_space(params, points) -> np.array:
-    projection_matrix = build_projection_matrix(params)
+# TODO: Refactor
+def project_to_camera_space(params, points) -> torch.tensor:
+    x_fov = params['PerspectiveCamera.x_fov']
+    near_clip = params['PerspectiveCamera.near_clip']
+    far_clip = params['PerspectiveCamera.far_clip']
+    # TODO: Refactor
+    perspective = utils_torch.build_projection_matrix(x_fov, near_clip, far_clip).to('cuda')
+    
+    camera_to_world = params["PerspectiveCamera.to_world"].matrix.torch()
 
-    camera_to_world = params["sensor.to_world"]
-
-    view_space_points = camera_to_world @ points
-    ndc_points = transforms.transform_points(np.array(view_space_points), projection_matrix)
+    view_space_points = transforms_torch.transform_points(points, camera_to_world.inverse())
+    ndc_points = transforms_torch.transform_points(view_space_points, perspective)
     return ndc_points
 
 
@@ -116,6 +121,28 @@ def compute_disparity(image: torch.tensor,
 
     return disparity
 
+
+def get_sparse_depth_map(scene, params, laser):
+    sensor = scene.sensors()[0]
+    film = sensor.film()
+    # TODO: Add device
+    size = torch.tensor(film.size(), device='cuda')
+
+    hit_points = cast_laser(scene, laser=laser)
+    ndc_coords = project_to_camera_space(params, hit_points)
+    pixel_coords = ndc_coords * 0.5 + 0.5
+    pixel_coords = pixel_coords[0, :, 0:2]
+    pixel_coords = torch.floor(pixel_coords * size).int()
+
+    mask = torch.zeros(size.tolist(), device=size.device)
+    mask[pixel_coords[:, 0], pixel_coords[:, 1]] = 1.0
+
+    depth_map = get_depth_map(scene, spp=1)
+    depth_map = depth_map.torch().reshape(256, 256)
+
+    return depth_map * mask
+
+@dr.wrap_ad(source='drjit', target='torch')
 def get_depth_map(scene, spp=64):
     sensor = scene.sensors()[0]
     film = sensor.film()
@@ -155,9 +182,7 @@ def get_depth_map(scene, spp=64):
     # Set to zero if no intersection was found
     result[~surface_interaction.is_valid()] = 0
 
-    depth = np.array(result).reshape(int(film_size[1]), int(film_size[0]), -1).mean(axis=-1)
-
-    return depth
+    return result
 
 def mse(image, image_ref):
     return dr.mean(dr.sqr(image - image_ref))

@@ -28,9 +28,11 @@ def rasterize_points(points: torch.tensor, sigma: float, texture_size: torch.ten
     point_distances = torch.exp(-torch.pow(point_distances, 2) / (2 * sigma * sigma))
 
     point_distances = point_distances.sum(dim=0)
-    a_points_distances = point_distances - point_distances.min()
-    b_point_distances = a_points_distances / a_points_distances.max()
-    return b_point_distances
+    point_distances = point_distances - point_distances.min()
+    #a_points_distances = point_distances - point_distances.min()
+    #b_point_distances = a_points_distances / a_points_distances.max()
+
+    return torch.clamp(point_distances, min=0.0, max=1.0)
 
 
 

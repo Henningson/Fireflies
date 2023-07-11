@@ -1,9 +1,9 @@
-import numpy as np
+import torch
 
 def rayPlane(laserOrigin, laserDirection, planeOrigin, planeNormal):
-    denom = np.sum(planeNormal * laserDirection, axis=1)
+    denom = torch.sum(planeNormal * laserDirection, axis=1)
 
-    denom = np.where(np.abs(denom) < 0.000001, denom/denom, denom)
-    t = np.sum((planeOrigin - laserOrigin) * planeNormal, axis=1) / denom
+    denom = torch.where(torch.abs(denom) < 0.000001, denom/denom, denom)
+    t = torch.sum((planeOrigin - laserOrigin) * planeNormal, axis=1) / denom
 
     return t[:, None]
