@@ -2,7 +2,7 @@ import torch
 import utils_io
 import utils_math
 import utils_torch
-import transforms_torch
+import transforms
 import random
 from typing import List, Tuple
 import os
@@ -85,15 +85,15 @@ class BaseEntity:
         temp_vertex = self.sampleAnimation()
 
         # Scale Object
-        temp_vertex = transforms_torch.transform_points(temp_vertex, self._scale)
+        temp_vertex = transforms.transform_points(temp_vertex, self._scale)
 
         # Rotate Object
         rotMat = self._rotation
-        rotMat = transforms_torch.toMat4x4(rotMat)
-        temp_vertex = transforms_torch.transform_points(temp_vertex, rotMat)
+        rotMat = transforms.toMat4x4(rotMat)
+        temp_vertex = transforms.transform_points(temp_vertex, rotMat)
 
         # Translate Object
-        temp_vertex = transforms_torch.transform_points(temp_vertex, self._translation)
+        temp_vertex = transforms.transform_points(temp_vertex, self._translation)
 
         return temp_vertex
 
@@ -158,7 +158,7 @@ class RandomizableCamera:
     def getTransforms(self) -> torch.tensor:
         # Rotate Object
         randomTransform = self.sampleRotation()
-        randomTransform = transforms_torch.toMat4x4(randomTransform)
+        randomTransform = transforms.toMat4x4(randomTransform)
         randomTranslation = self.sampleTranslation()
 
         randomTransform[0, 3] = randomTranslation[0]
@@ -236,17 +236,17 @@ class Projector:
 
     def getTransforms(self) -> torch.tensor:
         parentMat = self._parent.getLastTransform()
-        blendParentMat = transforms_torch.matToBlender(parentMat, self._device)
-        blendWorldMat = transforms_torch.matToBlender(self._to_world, self._device)
+        blendParentMat = transforms.matToBlender(parentMat, self._device)
+        blendWorldMat = transforms.matToBlender(self._to_world, self._device)
 
-        relative_world = transforms_torch.matToMitsuba(blendParentMat @ blendWorldMat, self._device)
+        relative_world = transforms.matToMitsuba(blendParentMat @ blendWorldMat, self._device)
 
         return relative_world
     
 
     def getWorldMat(self) -> torch.tensor:
         translation, rotMat = self.getTransforms()
-        rotMat = transforms_torch.toMat4x4(rotMat)
+        rotMat = transforms.toMat4x4(rotMat)
         
         rotMat[0, 3] = translation[0]
         rotMat[1, 3] = translation[1]
@@ -381,15 +381,15 @@ class Randomizable:
         temp_vertex, temp_faces = self.sampleAnimation()
 
         # Scale Object
-        temp_vertex = transforms_torch.transform_points(temp_vertex.reshape(-1, 3), self.sampleScale())
+        temp_vertex = transforms.transform_points(temp_vertex.reshape(-1, 3), self.sampleScale())
 
         # Rotate Object
         rotMat = self.sampleRotation()
-        rotMat = transforms_torch.toMat4x4(rotMat)
-        temp_vertex = transforms_torch.transform_points(temp_vertex, rotMat)
+        rotMat = transforms.toMat4x4(rotMat)
+        temp_vertex = transforms.transform_points(temp_vertex, rotMat)
 
         # Translate Object
-        temp_vertex = transforms_torch.transform_points(temp_vertex, self.sampleTranslation())
+        temp_vertex = transforms.transform_points(temp_vertex, self.sampleTranslation())
 
         return temp_vertex, temp_faces
 
@@ -419,23 +419,23 @@ class RelativeEntity(BaseEntity):
         temp_vertex = self.sampleAnimation() if self._animated else self._vertices 
 
         # Scale Object
-        temp_vertex = transforms_torch.transform_points(temp_vertex, self._scale)
+        temp_vertex = transforms.transform_points(temp_vertex, self._scale)
 
         # Rotate Object
         rotMat = self._rotation
-        rotMat = transforms_torch.toMat4x4(rotMat)
-        temp_vertex = transforms_torch.transform_points(temp_vertex, rotMat)
+        rotMat = transforms.toMat4x4(rotMat)
+        temp_vertex = transforms.transform_points(temp_vertex, rotMat)
 
         # Translate Object
-        temp_vertex = transforms_torch.transform_points(temp_vertex, self._translation)
+        temp_vertex = transforms.transform_points(temp_vertex, self._translation)
 
         # Rotate by parent
         p_rotMat = self._parent.rotation()
-        p_rotMat = transforms_torch.toMat4x4(p_rotMat)
-        temp_vertex = transforms_torch.transform_points(temp_vertex, p_rotMat)
+        p_rotMat = transforms.toMat4x4(p_rotMat)
+        temp_vertex = transforms.transform_points(temp_vertex, p_rotMat)
 
         # Translate by parent
-        temp_vertex = transforms_torch.transform_points(temp_vertex, self._parent.translation())
+        temp_vertex = transforms.transform_points(temp_vertex, self._parent.translation())
 
         return temp_vertex
 

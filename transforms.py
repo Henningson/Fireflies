@@ -1,4 +1,5 @@
 import torch
+import utils_torch
 
 def convert_points_to_homogeneous(points: torch.tensor) -> torch.tensor:
     return torch.nn.functional.pad(points, pad=(0, 1), mode="constant", value=1.0)
@@ -63,3 +64,19 @@ def matToMitsuba(mat, device):
     coordinate_shift[1, 2] = 1.0
 
     return coordinate_shift @ mat @ init_rot
+
+
+
+def project_to_camera_space(params, points) -> torch.tensor:
+    x_fov = params['PerspectiveCamera.x_fov']
+    near_clip = params['PerspectiveCamera.near_clip']
+    far_clip = params['PerspectiveCamera.far_clip']
+
+    # TODO: Refactor
+    perspective = utils_torch.build_projection_matrix(x_fov, near_clip, far_clip).to('cuda')
+    
+    camera_to_world = params["PerspectiveCamera.to_world"].matrix.torch()
+
+    view_space_points = transform_points(points, camera_to_world.inverse())
+    ndc_points = transform_points(view_space_points, perspective)
+    return ndc_points

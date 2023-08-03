@@ -5,8 +5,7 @@ import utils_torch
 import numpy as np
 import math
 import rasterization
-import transforms_np
-import transforms_torch
+import transforms
 
 from typing import List
 
@@ -34,11 +33,14 @@ class Laser:
 
     
     def rays(self) -> torch.tensor:
-        return transforms_torch.transform_directions(self._rays, self._to_world)
+        return transforms.transform_directions(self._rays, self._to_world)
 
     
     def origin(self) -> torch.tensor:
         return self._origin
+
+    def originPerRay(self) -> torch.tensor:
+        return self._origin.unsqueeze(0).repeat(self._rays.shape[0], 1)
 
 
     def initRandomRays(self):
@@ -67,13 +69,13 @@ class Laser:
             return 0
         
         clamped_ndc_points = torch.clamp(xy_coords, -clamp_val, clamp_val)
-        clamped_rays = self.projectNDCPointsToWorld(transforms_torch.convert_points_to_homogeneous(clamped_ndc_points))
+        clamped_rays = self.projectNDCPointsToWorld(transforms.convert_points_to_homogeneous(clamped_ndc_points))
         self._rays[:] = self.normalize(clamped_rays)
 
     def randomize_out_of_bounds(self) -> None:
         # TODO: Check, if laser beam falls out of fov. If it does, spawn a new randomly in NDC in (-1, 1).
         new_rays = self._rays.clone()
-        ndc_coords = transforms_torch.transform_points(new_rays, self._perspective)
+        ndc_coords = transforms.transform_points(new_rays, self._perspective)
         xy_coords = ndc_coords[:, 0:2]
         out_of_bounds_indices = ((xy_coords > 1.0) | (xy_coords < -1.0)).any(dim=1)
         
@@ -104,14 +106,118 @@ class Laser:
 
     def projectRaysToNDC(self) -> torch.tensor:
         #rays_in_world = transforms_torch.transform_directions(self._rays, self._to_world)
-        return transforms_torch.transform_points(self._rays, self._perspective)
+        return transforms.transform_points(self._rays, self._perspective)
     
     def projectNDCPointsToWorld(self, points: torch.tensor) -> torch.tensor:
-        return transforms_torch.transform_points(points, self._perspective.inverse())
+        return transforms.transform_points(points, self._perspective.inverse())
     
     def generateTexture(self, sigma: float, texture_size: List[int]) -> torch.tensor:
         points = self.projectRaysToNDC()[:, 0:2]
         return rasterization.rasterize_points(points, sigma, texture_size)
+
+
+
+
+class DeprecatedLaser:
+    def __init__(self, num_beams_x: int, num_beams_y: int, intra_ray_angle: float, to_world: torch.tensor, origin: torch.tensor, max_fov: float = None, near_clip: float = 0.01, far_clip: float = 1000.0, device: torch.cuda.device = torch.device("cuda")):
+        
+        self.device = device
+        intra_ray_angle = intra_ray_angle * math.pi / 180
+        self._to_world = to_world.to(self.device)
+        self._rays = self.computeRays(intra_ray_angle, num_beams_x, num_beams_y).to(self.device)
+        self._origin = origin.to(self.device)
+        max_fov = num_beams_x*intra_ray_angle if max_fov is None else max_fov
+        self._perspective = utils_torch.build_projection_matrix(max_fov, near_clip, far_clip).to(self.device)
+
+    
+    def rays(self) -> torch.tensor:
+        return transforms.transform_directions(self._rays, self._to_world)
+
+    
+    def origin(self) -> torch.tensor:
+        return self._origin
+
+
+    def computeRays(self, intra_ray_angle: float, num_beams_x: int, num_beams_y) -> torch.tensor:
+        laserRays = torch.zeros((num_beams_y*num_beams_x, 3), device=self.device)
+
+        for x in range(num_beams_x):
+            for y in range(num_beams_y):
+                laserRays[x * num_beams_x + y, :] = torch.tensor([
+                    math.tan((x-(num_beams_x - 1) / 2) * intra_ray_angle), 
+                    math.tan((y-(num_beams_y - 1) / 2) * intra_ray_angle), 
+                    1.0])
+
+        return self.normalize(laserRays)
+    
+
+    def initRandomRays(self):
+        # Spawn random points in [-1.0, 1.0]
+        spawned_points = torch.rand(self._rays.shape, device=self.device) * 2.0 - 1.0
+
+        # Set Z to 1
+        spawned_points[:, 2] = 1.0
+
+        # Project to world
+        rand_rays = self.projectNDCPointsToWorld(spawned_points)
+        self._rays = self.normalize(rand_rays)
+
+
+    def clamp_to_fov(self, clamp_val: float = 0.95, epsilon: float = 0.001) -> None:
+        # TODO: Check, if laser beam falls out of fov. If it does, clamp it back.
+        # If randomize is set, spawn a new random laser inside NDC.
+        # Else, clamp it to the edge.
+        ndc_coords = self.projectRaysToNDC()
+        xy_coords = ndc_coords[:, 0:2]
+        out_of_bounds_indices = ((xy_coords > 1.0 - epsilon) | (xy_coords < -1.0 + epsilon)).any(dim=1)
+        
+        out_of_bounds_points = ndc_coords[out_of_bounds_indices]
+        
+        if out_of_bounds_points.nelement() == 0:
+            return 0
+        
+        clamped_ndc_points = torch.clamp(xy_coords, -clamp_val, clamp_val)
+        clamped_rays = self.projectNDCPointsToWorld(transforms.convert_points_to_homogeneous(clamped_ndc_points))
+        self._rays[:] = self.normalize(clamped_rays)
+
+    def randomize_out_of_bounds(self) -> None:
+        # TODO: Check, if laser beam falls out of fov. If it does, clamp it back.
+        # If randomize is set, spawn a new random laser inside NDC.
+        # Else, clamp it to the edge.
+        new_rays = self._rays.clone()
+        ndc_coords = transforms.transform_points(new_rays, self._perspective)
+        xy_coords = ndc_coords[:, 0:2]
+        out_of_bounds_indices = ((xy_coords > 1.0) | (xy_coords < -1.0)).any(dim=1)
+        
+        out_of_bounds_points = ndc_coords[out_of_bounds_indices]
+        
+        if out_of_bounds_points.nelement() == 0:
+            return 0
+        
+        out_of_bounds_points = torch.rand(out_of_bounds_points.shape, device=self.device) * 2.0 - 1.0
+        
+        clamped_rays = self.projectNDCPointsToWorld(out_of_bounds_points)
+        new_rays[out_of_bounds_indices] = clamped_rays
+        new_rays = self.normalize(new_rays)
+
+
+        self._rays[:] = new_rays
+
+    def normalize(self, tensor: torch.tensor) -> torch.tensor:
+        return tensor / torch.linalg.norm(tensor, dim=-1, keepdims=True)
+    
+
+    def setToWorld(self, to_world: torch.tensor) -> None:
+        self._to_world = to_world
+
+
+    def projectRaysToNDC(self) -> torch.tensor:
+        return transforms.transform_points(self._rays, self._perspective)
+    
+    def projectNDCPointsToWorld(self, points: torch.tensor) -> torch.tensor:
+        return transforms.transform_points(points, self._perspective.inverse())
+
+
 
 
 if __name__ == "__main__":

@@ -32,13 +32,13 @@ Generation and optimization of domain-specific laser pattern for single-shot str
 ✅ Randomized Depth Maps  
 ✅ Initialization of laser pattern  
 ❌ Weighted segmentation maps  
-❌ Take epipolar lines into account  
-❌ Laser Pattern FOV constraints  
+✅ Take epipolar lines into account  
+✅ Laser Pattern FOV constraints  
 ❌ Weighted object significance  
 
 ## Optimization
 ❌ Averaged Gradient Step  
-❌ UNet based Depthmap inpainting  
+✅ UNet based Depthmap inpainting  
 ❌ Add noise  
 
 ## Experiments
@@ -50,3 +50,8 @@ Generation and optimization of domain-specific laser pattern for single-shot str
 
 ## Utils
 ❌ Change xml read to yaml -> dict read
+❌ Argparse for increased usability
+
+
+## Blender Add-On
+❌ From Script to installable

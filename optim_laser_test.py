@@ -2,7 +2,7 @@ import drjit as dr
 import mitsuba as mi
 mi.set_variant("cuda_ad_rgb")
 import laser_torch
-import transforms_torch
+import transforms
 import utils_torch
 import utils_np
 import rasterization
@@ -97,10 +97,10 @@ def render_depth(scene, spp=64):
 def main():
     global global_scene, global_params, global_key
     device = torch.device("cuda")
-    laser_reference = laser_torch.Laser(20, 20, 0.5, torch.eye(4), torch.tensor([0.0, 0.0, 0.0]), max_fov=12)
+    laser_reference = laser_torch.DeprecatedLaser(20, 20, 0.5, torch.eye(4), torch.tensor([0.0, 0.0, 0.0]), max_fov=12)
     laser_reference.initRandomRays()
 
-    laser_init = laser_torch.Laser(20, 20, 0.5, torch.eye(4), torch.tensor([0.0, 0.0, 0.0]), max_fov=12)
+    laser_init = laser_torch.DeprecatedLaser(20, 20, 0.5, torch.eye(4), torch.tensor([0.0, 0.0, 0.0]), max_fov=12)
     sigma = 0.001
     texture_size = torch.tensor([512, 512], device=device)
 
@@ -145,7 +145,7 @@ def main():
         texture_init = rasterization.rasterize_points(points, sigma, texture_size)
 
 
-        rendered_img = render(texture_init.unsqueeze(-1).repeat(1, 1, 3), "tex.data", spp=spp)
+        rendered_img = render(texture_init.unsqueeze(-1).repeat(1, 1, 3), spp=spp)
         grayscale_render = rendered_img.mean(dim=-1)
         grayscale_render = grayscale_render / grayscale_render.max()
         
@@ -160,7 +160,7 @@ def main():
         cv2.imshow("Depth", rendered_depth.detach().cpu().numpy())
         cv2.waitKey(1)
         
-        loss = loss_fn(rendered_img, reference_image)
+        loss = loss_fn(rendered_img, torch.randn(reference_image.shape, device=device))
 
         loss.backward()
         optimizer.step()
