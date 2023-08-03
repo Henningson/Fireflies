@@ -32,10 +32,12 @@ def render(texture, spp=256, seed=1):
 
 @dr.wrap_ad(source='torch', target='drjit')
 def cast_laser(origin, direction):
-    surface_interaction = global_scene.ray_intersect(mi.Ray3f(mi.Point3f(origin), mi.Vector3f(direction)))
+    origin_point = mi.Point3f(origin[:, 0].array, origin[:, 1].array, origin[:, 2].array)
+    rays_vector = mi.Vector3f(direction[:, 0].array, direction[:, 1].array, direction[:, 2].array)
+    surface_interaction = global_scene.ray_intersect(mi.Ray3f(origin_point, rays_vector))
     result = surface_interaction.t
     result[~surface_interaction.is_valid()] = 0
-    return mi.TensorXf(result, shape=(1, len(result)))
+    return mi.TensorXf(result, shape=(len(result), 1))
 
 
 def main():
@@ -129,8 +131,8 @@ def main():
     iterations = 10000
 
     optim = torch.optim.Adam([
-        {'params': model.parameters(),  'lr': 0.01}, 
-        {'params': Laser._rays,         'lr': 0.005}
+        {'params': model.parameters(),  'lr': 0.001}, 
+        {'params': Laser._rays,         'lr': 0.01}
         ])
 
 
@@ -145,11 +147,13 @@ def main():
         texture_init = rasterization.rasterize_points(points, sigma, tex_size)
 
         hitpoints = cast_laser(Laser.originPerRay(), Laser.rays())
+        world_points = Laser.originPerRay() + hitpoints * Laser.rays()
+        ndc_points = transforms.project_to_camera_space(global_params, world_points).squeeze()
 
+        sensor_size = torch.tensor(global_scene.sensors()[0].film().size(), device=DEVICE)
+        sparse_depth = rasterization.rasterize_depth(ndc_points[:, 0:2], ndc_points[:, 2:3], sigma, sensor_size)
 
-
-
-        input = render(texture_init.unsqueeze(-1), spp=spp, seed=i)
+        #input = render(texture_init.unsqueeze(-1), spp=spp, seed=i)
         
         dense_depth = depth.from_camera_non_wrapped(global_scene, spp).torch()
         dense_depth = dense_depth.reshape(256, 256, spp).mean(dim=-1)
@@ -174,7 +178,8 @@ def main():
         '''
 
         # Use U-Net to interpolate
-        pred_depth = model(input.moveaxis(-1, 0).unsqueeze(0))
+        #pred_depth = model(sparse_depth.moveaxis(-1, 0).unsqueeze(0))
+        pred_depth = model(sparse_depth.unsqueeze(0).unsqueeze(0))
 
         loss = loss_func(pred_depth.squeeze(), dense_depth)
         loss.backward()
@@ -190,7 +195,8 @@ def main():
         progress_bar.set_description("Loss: {0:.4f}".format(loss.item()))
         pred_depth_map = pred_depth[0, 0].unsqueeze(-1).repeat(1, 1, 3).detach().cpu().numpy()
         gt_depth_map = dense_depth.unsqueeze(-1).repeat(1, 1, 3).detach().cpu().numpy()
-        rendering = torch.clamp(input, 0, 1).detach().cpu().numpy()
+        #rendering = torch.clamp(input, 0, 1).detach().cpu().numpy()
+        rendering = sparse_depth.unsqueeze(-1).repeat(1, 1, 3).detach().cpu().numpy()
         texture = texture_init.unsqueeze(-1).repeat(1, 1, 3).detach().cpu().numpy()
 
         concat_im = np.hstack([rendering, texture, pred_depth_map, gt_depth_map])
