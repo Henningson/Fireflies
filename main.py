@@ -14,6 +14,7 @@ import transforms
 import laser_torch
 import UNet
 import rasterization
+import Losses
 
 from tqdm import tqdm
 
@@ -45,16 +46,17 @@ def main():
     global global_params
     global global_key
 
+
+    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
     base_path = "scenes/RotObject/"
-    num_depth_maps = 5
+    num_depth_maps = 150
     steps_per_frame = 5
     sequentially_updated = True
     num_point_samples = 150
     weight = 0.001
     save_images = False
     spp=4
-    sigma=0.004
-    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+    sigma=torch.tensor([0.016], device=DEVICE)
 
 
     global_scene = mi.load_file(os.path.join(base_path, "scene.xml"))
@@ -123,16 +125,22 @@ def main():
     Laser = laser_torch.Laser(laser_to_world, local_laser_dir, fov, near_clip, far_clip)
 
     # Init U-Net and params
-    model = UNet.Model(device=DEVICE).to(DEVICE)
+    UNET_CONFIG = {
+        'in_channels': num_point_samples, 
+        'out_channels': 1, 
+        'features': [32, 64, 128, 256, 512]}
+    model = UNet.Model(config=UNET_CONFIG, device=DEVICE).to(DEVICE)
     model.train()
     
-    loss_func = torch.nn.MSELoss()
+    loss_func = Losses.SSIM()
     Laser._rays.requires_grad = True
+    sigma.requires_grad = True
     iterations = 10000
 
     optim = torch.optim.Adam([
-        {'params': model.parameters(),  'lr': 0.001}, 
-        {'params': Laser._rays,         'lr': 0.01}
+        {'params': model.parameters(),  'lr': 0.005}, 
+        {'params': Laser._rays,         'lr': 0.005},
+        {'params': sigma,               'lr': 0.0001}
         ])
 
 
@@ -157,31 +165,41 @@ def main():
         
         dense_depth = depth.from_camera_non_wrapped(global_scene, spp).torch()
         dense_depth = dense_depth.reshape(256, 256, spp).mean(dim=-1)
+        dense_depth = dense_depth - near_clip
+        dense_depth = dense_depth / far_clip
+        dense_depth = 1 - dense_depth
+        
         dense_depth = (dense_depth - dense_depth.min()) / (dense_depth.max() - dense_depth.min())
 
+        sparse_depth = (sparse_depth - sparse_depth.min()) / (sparse_depth.max() - sparse_depth.min())
+
+
         '''
+        import matplotlib.pyplot as plt
         plt.axis("off")
         plt.title("GT")
-        plt.imshow(image_init)
+        plt.imshow(sparse_depth.detach().cpu().numpy())
         plt.show(block=True)
-        '''
 
         # Generate sparse depth map
         #sparse_depth = depth.from_laser(global_scene, global_params, Laser)
         #sparse_depths.append(torch.stack([sparse_depth, render_init]))
-        '''
+
         print("Init | GT | Depth")
         plt.axis("off")
         plt.title("Sparse Depth")
-        plt.imshow(sparse_depth.detach().cpu().numpy())
+        plt.imshow(dense_depth.detach().cpu().numpy())
         plt.show(block=True)
         '''
 
         # Use U-Net to interpolate
         #pred_depth = model(sparse_depth.moveaxis(-1, 0).unsqueeze(0))
-        pred_depth = model(sparse_depth.unsqueeze(0).unsqueeze(0))
+        pred_depth = model(sparse_depth.unsqueeze(0))
 
-        loss = loss_func(pred_depth.squeeze(), dense_depth)
+        #loss = torch.tensor([0.0], device=DEVICE)
+        #for loss_func, lam in loss_funcs:
+        #    loss += loss_func(pred_depth, dense_depth.unsqueeze(0).unsqueeze(0)) * lam
+        loss = -loss_func(pred_depth, dense_depth.unsqueeze(0).unsqueeze(0))
         loss.backward()
 
         optim.step()
@@ -192,11 +210,11 @@ def main():
             Laser.normalize_rays()
 
 
-        progress_bar.set_description("Loss: {0:.4f}".format(loss.item()))
+        progress_bar.set_description("Loss: {0:.4f}, Sigma: {1:.4f}".format(loss.item(), sigma.detach().cpu().numpy()[0]))
         pred_depth_map = pred_depth[0, 0].unsqueeze(-1).repeat(1, 1, 3).detach().cpu().numpy()
         gt_depth_map = dense_depth.unsqueeze(-1).repeat(1, 1, 3).detach().cpu().numpy()
         #rendering = torch.clamp(input, 0, 1).detach().cpu().numpy()
-        rendering = sparse_depth.unsqueeze(-1).repeat(1, 1, 3).detach().cpu().numpy()
+        rendering = torch.clamp(sparse_depth, 0, 1).sum(dim=0).unsqueeze(-1).repeat(1, 1, 3).detach().cpu().numpy()
         texture = texture_init.unsqueeze(-1).repeat(1, 1, 3).detach().cpu().numpy()
 
         concat_im = np.hstack([rendering, texture, pred_depth_map, gt_depth_map])

@@ -63,7 +63,7 @@ def rasterize_depth(points: torch.tensor, depth_vals: torch.tensor, sigma: float
     point_distances = point_distances / point_distances.max(dim=2, keepdim=True)[0].max(dim=1, keepdim=True)[0]
 
     # scale by depth in range [0, 1]
-    return (point_distances * depth_vals.unsqueeze(1)).sum(dim=0)
+    return point_distances * depth_vals.unsqueeze(1)
 
 
 def main():
