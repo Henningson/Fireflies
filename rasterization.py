@@ -84,23 +84,27 @@ def rasterize_lines(lines: torch.tensor, sigma: float, texture_size: torch.tenso
     lines_start *= texture_size
     lines_end *= texture_size
 
+    lines_start = lines_start.permute(1, 0).unsqueeze(-1).unsqueeze(-1)
+    lines_end = lines_end.permute(1, 0).unsqueeze(-1).unsqueeze(-1)
+    
+
     y, x = torch.meshgrid(torch.arange(0, texture_size[1], device=device), torch.arange(0, texture_size[0], device=device), indexing='ij')
     y = y.unsqueeze(0).repeat((lines.shape[0], 1, 1))
     x = x.unsqueeze(0).repeat((lines.shape[0], 1, 1))   
-    xy = torch.concat([x, y], dim=0)
+    xy = torch.stack([x, y])
 
     m = lines_end - lines_start
-    t = ((xy - lines_start.unsqueeze(0)) * m) / (m*m)
+    t = ((xy - lines_start) * m) / (m*m + torch.finfo().eps)
 
-    distance_smaller_zero = (t <= 0) * (torch.linalg.norm(xy - lines_start))
-    distance_inbetween = (t > 0 and t < 1) * torch.linalg.norm(xy - (lines_start + t * m))
-    distance_greater_one = (t >= 1) * torch.linalg.norm(xy - lines_end)
+    distance_smaller_zero = torch.linalg.norm(torch.where(t <= 0, 1, 0) * (xy - lines_start), dim=0)
+    distance_inbetween = torch.linalg.norm(torch.bitwise_and(torch.where(t > 0, 1, 0), torch.where(t < 1, 1, 0)) * (xy - (lines_start + t * m)), dim=0)
+    distance_greater_one = torch.linalg.norm(torch.where(t >= 1, 1, 0) * (xy - lines_end), dim=0)
 
     distances = distance_smaller_zero + distance_inbetween + distance_greater_one
 
-    distances = torch.exp(-(distances*distances) / sigma*sigma)
+    #distances = torch.exp(-torch.linalg.norm(distances, dim=0) / sigma*sigma)
 
-    return distances
+    return torch.exp(-(distances*distances) / (sigma * sigma))
 
 
 
@@ -113,26 +117,31 @@ def main():
 
 
     points = (torch.rand([1000, 2], device=device) - 0.5) * 2.0
-    sigma = 0.001
+    lines = (torch.rand([1, 4], device=device) - 0.5) * 2.0
+    sigma = 6
     texture_size = torch.tensor([512, 512], device=device)
 
 
-    texture = rasterize_points(points, sigma, texture_size)
-    scene_init = mi.load_file("scenes/proj_cbox.xml", spp=1024)
-    params = mi.traverse(scene_init)
+    #point_texture = rasterize_points(points, sigma, texture_size)
+    line_texture = rasterize_lines(lines, sigma, texture_size)
     
-    params["tex.data"] = mi.TensorXf(texture.cuda().unsqueeze(-1).repeat(1, 1, 3))
-    params.update()
+    #scene_init = mi.load_file("scenes/proj_cbox.xml", spp=1024)
+    #params = mi.traverse(scene_init)
+    
+    #params["tex.data"] = mi.TensorXf(texture.cuda().unsqueeze(-1).repeat(1, 1, 3))
+    #params.update()
 
-    render_init = mi.render(scene_init, spp=1024)
-    image_init = mi.util.convert_to_bitmap(render_init)
+    #render_init = mi.render(scene_init, spp=1024)
+    #image_init = mi.util.convert_to_bitmap(render_init)
 
+    #plt.axis("off")
+    #plt.title("GT")
+    #plt.imshow(point_texture.detach().cpu().numpy())
+    #plt.show(block=True)
 
-
-    print("Init | GT | Depth")
     plt.axis("off")
     plt.title("GT")
-    plt.imshow(image_init)
+    plt.imshow(line_texture[0].detach().cpu().numpy())
     plt.show(block=True)
 
 
