@@ -54,7 +54,7 @@ def from_camera_non_wrapped(scene, spp=64):
     pos += sampler.next_2d()
 
     # Sample rays starting from the camera sensor
-    rays, weights = sensor.sample_ray_differential(
+    rays, weights = sensor.sample_ray(
         time=0,
         sample1=sampler.next_1d(),
         sample2=pos * scale,
@@ -75,7 +75,7 @@ def from_camera_non_wrapped(scene, spp=64):
 
 
 
-@dr.wrap_ad(source='torch', target='drjit')
+@dr.wrap_ad(source='drjit', target='torch')
 def from_camera(scene, spp=64):
     sensor = scene.sensors()[0]
     film = sensor.film()
@@ -98,7 +98,7 @@ def from_camera(scene, spp=64):
     pos += sampler.next_2d()
 
     # Sample rays starting from the camera sensor
-    rays, weights = sensor.sample_ray_differential(
+    rays, weights = sensor.sample_ray(
         time=0,
         sample1=sampler.next_1d(),
         sample2=pos * scale,

@@ -34,6 +34,7 @@ def rasterize_points(points: torch.tensor, sigma: float, texture_size: torch.ten
 
     return torch.clamp(point_distances, min=0.0, max=1.0)
 
+
 # We assume points to be in NDC [-1, 1]
 def rasterize_depth(points: torch.tensor, depth_vals: torch.tensor, sigma: float, texture_size: torch.tensor, device: torch.cuda.device = torch.device("cuda")) -> torch.tensor:
     tex = torch.zeros(texture_size.tolist(), dtype=torch.float32, device=device)
@@ -64,6 +65,45 @@ def rasterize_depth(points: torch.tensor, depth_vals: torch.tensor, sigma: float
 
     # scale by depth in range [0, 1]
     return point_distances * depth_vals.unsqueeze(1)
+
+
+def rasterize_lines(lines: torch.tensor, sigma: float, texture_size: torch.tensor, device: torch.cuda.device = torch.device("cuda")) -> torch.tensor:
+    # lines are in NDC
+
+    tex = torch.zeros(texture_size.tolist(), dtype=torch.float32, device=device)
+    tex = tex[None, ...]
+    tex = tex.repeat((lines.shape[0], 1, 1, 1))
+
+    # Convert points to 0 -> 1
+    lines = lines*0.5 + 0.5
+
+    lines_start = lines[:, 0:2]
+    lines_end = lines[:, 2:4]
+    
+    # Somewhere between [0, texture_size] but in float
+    lines_start *= texture_size
+    lines_end *= texture_size
+
+    y, x = torch.meshgrid(torch.arange(0, texture_size[1], device=device), torch.arange(0, texture_size[0], device=device), indexing='ij')
+    y = y.unsqueeze(0).repeat((lines.shape[0], 1, 1))
+    x = x.unsqueeze(0).repeat((lines.shape[0], 1, 1))   
+    xy = torch.concat([x, y], dim=0)
+
+    m = lines_end - lines_start
+    t = ((xy - lines_start.unsqueeze(0)) * m) / (m*m)
+
+    distance_smaller_zero = (t <= 0) * (torch.linalg.norm(xy - lines_start))
+    distance_inbetween = (t > 0 and t < 1) * torch.linalg.norm(xy - (lines_start + t * m))
+    distance_greater_one = (t >= 1) * torch.linalg.norm(xy - lines_end)
+
+    distances = distance_smaller_zero + distance_inbetween + distance_greater_one
+
+    distances = torch.exp(-(distances*distances) / sigma*sigma)
+
+    return distances
+
+
+
 
 
 def main():

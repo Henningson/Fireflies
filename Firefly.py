@@ -5,7 +5,6 @@ import os
 import mitsuba as mi
 mi.set_variant("cuda_ad_rgb")
 import drjit as dr
-dr.set_flag(dr.JitFlag.LoopRecord, False)
 import entity
 import torch
 
@@ -183,20 +182,19 @@ def generate_epipolar_shadow(scene):
 
 
 if __name__ == "__main__":
-    import matplotlib.pyplot as plt
-    import numpy as np
-    import cv2
+    from tqdm import tqdm
 
-    base_path = "TestMitsubaScene/"
+    base_path = "scenes/EasyCube/"
     sequential = True
 
     mitsuba_scene = mi.load_file(os.path.join(base_path, "scene.xml"))
     mitsuba_params = mi.traverse(mitsuba_scene)
+    mitsuba_params["PerspectiveCamera.film.size"] = [32, 32]
     firefly_scene = Scene(mitsuba_params, base_path, sequential_animation=sequential)
 
-    for i in range(150):
+
+    for i in tqdm(range(100000)):
         firefly_scene.randomize()
+        mitsuba_params.update()
         render = mi.render(mitsuba_scene, spp=1)
         image = mi.util.convert_to_bitmap(render)
-        cv2.imshow("Image", np.array(image))
-        cv2.waitKey(0)

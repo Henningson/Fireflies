@@ -103,7 +103,7 @@ def generate_epipolar_constraints(scene, params, device):
     camera_sensor = scene.sensors()[0]
 
     projector_sensor = scene.sensors()[1]
-    proj_ywidth, proj_xwidth = projector_sensor.film().crop_size()
+    proj_ywidth, proj_xwidth = projector_sensor.film().size()
     
     # These values correspond to a flattened array.
     # Upper-Left
@@ -118,14 +118,16 @@ def generate_epipolar_constraints(scene, params, device):
 
 
 
-    ray_origins, ray_directions = create_rays(projector_sensor, proj_frame_bounds)
+    _, ray_directions = create_rays(projector_sensor, proj_frame_bounds)
+    ray_origins = projector_sensor.world_transform().matrix.torch().squeeze()[0:3, 3]
+    ray_origins = ray_origins.unsqueeze(0).repeat(ray_directions.shape[0], 1)
     #ray_origins = torch.tensor(ray_origins, device=device)
     #ray_directions = torch.tensor(ray_directions, device=device)
 
 
     # TODO: Inlcude projector near and far clip here,
     # to ensure optimization in specific epipolar range.
-    epipolar_min = ray_origins.mean(dim=0, keepdims=True)
+    epipolar_min = ray_origins
     epipolar_max = ray_origins + 10000 * ray_directions
 
     K = utils_torch.build_projection_matrix(params['PerspectiveCamera.x_fov'], params['PerspectiveCamera.near_clip'], params['PerspectiveCamera.far_clip'])

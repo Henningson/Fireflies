@@ -6,12 +6,14 @@ class DoubleConv(nn.Module):
     def __init__(self, in_channels, out_channels):
         super(DoubleConv, self).__init__()
         self.conv = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, 3, 1, 1, bias=False),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True),
-            nn.Conv2d(out_channels, out_channels, 3, 1, 1, bias=False),
-            nn.BatchNorm2d(out_channels),
-            nn.ReLU(inplace=True))
+            GatedBlock(in_channels, out_channels, 3, 1, 1),
+            #nn.BatchNorm2d(out_channels),
+            nn.LeakyReLU(inplace=True),
+            #nn.Conv2d(out_channels, out_channels, 3, 1, 1, bias=False),
+            GatedBlock(out_channels, out_channels, 3, 1, 1),
+            #nn.BatchNorm2d(out_channels),
+            nn.LeakyReLU(inplace=True)
+            )
 
     def forward(self, x):
         return self.conv(x)
@@ -65,6 +67,37 @@ class Encoder(nn.Module):
         self.skip_connections = self.skip_connections[::-1]
 
         return x
+
+
+class GatedBlock(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size=3, stride=1, dilation=1, padding_mode='reflect', act_fun=nn.ELU, normalization=nn.BatchNorm2d):
+        super().__init__()
+        self.pad_mode = padding_mode
+        self.filter_size = kernel_size
+        self.stride = stride
+        self.dilation = dilation
+
+        n_pad_pxl = int(self.dilation * (self.filter_size - 1) / 2)
+
+        # this is for backward campatibility with older model checkpoints
+        self.block = nn.ModuleDict(
+            {
+                'conv_f': nn.Conv2d(in_channels, out_channels, kernel_size, stride=stride, dilation=dilation, padding=n_pad_pxl),
+                'act_f': act_fun(),
+                'conv_m': nn.Conv2d(in_channels, out_channels, kernel_size, stride=stride, dilation=dilation, padding=n_pad_pxl),
+                'act_m': nn.Sigmoid(),
+                'norm': normalization(out_channels)
+            }
+        )
+
+    def forward(self, x, *args, **kwargs):
+        features = self.block.act_f(self.block.conv_f(x))
+        mask = self.block.act_m(self.block.conv_m(x))
+        output = features * mask
+        output = self.block.norm(output)
+
+        return output
+
 
 
 class Model(nn.Module):
