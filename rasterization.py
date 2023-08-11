@@ -24,11 +24,9 @@ def rasterize_points(points: torch.tensor, sigma: float, texture_size: torch.ten
     y_dist = y - points[:, 0:1].unsqueeze(-1)
     x_dist = x - points[:, 1:2].unsqueeze(-1)
     
-    point_distances = (y_dist*y_dist + x_dist*x_dist).sqrt() / (texture_size * texture_size).sum().sqrt()
-    point_distances = torch.exp(-torch.pow(point_distances, 2) / (2 * sigma * sigma))
+    point_distances = (y_dist*y_dist + x_dist*x_dist).sqrt() #/ (texture_size * texture_size).sum().sqrt()
+    point_distances = torch.exp(-torch.pow(point_distances, 2) / (sigma * sigma))
 
-    #a_points_distances = point_distances - point_distances.min()
-    #b_point_distances = a_points_distances / a_points_distances.max()
 
     return point_distances
 
@@ -106,6 +104,7 @@ def rasterize_lines(lines: torch.tensor, sigma: float, texture_size: torch.tenso
     distance_greater_one = (t0 >= 1) * (pb * pb).sum(dim=0)
 
     distances = distance_smaller_zero + distance_inbetween + distance_greater_one
+    distances = distances.sqrt()
     return torch.exp(-(distances*distances) / (sigma * sigma))
 
 
@@ -118,21 +117,24 @@ def softor(texture: torch.tensor, dim=0, keepdim: bool = False) -> torch.tensor:
 
 def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
-#    import mitsuba as mi
-#    mi.set_variant("cuda_ad_rgb")
 
-
-    #points = (torch.rand([1000, 2], device=device) - 0.5) * 2.0
-    lines = (torch.rand([50, 2, 2], device=device) - 0.5) * 2.0
-    #lines = torch.tensor([[[-1.0, -1.0], [1.0, 1.0]]], device=device)
+    points = (torch.rand([100, 2], device=device) - 0.5) * 2.0
+    lines = (torch.rand([15, 2, 2], device=device) - 0.5) * 2.0
     texture_size = torch.tensor([512, 512], device=device)
     
-    sigma = 30
+    sigma = 20
+
     line_texture = rasterize_lines(lines, sigma, texture_size, device=device)
+    line_texture = softor(line_texture)
+
+    point_texture = rasterize_points(points, sigma, texture_size, device=device)
+    point_texture = softor(point_texture)
+
+    texture = torch.hstack([point_texture, line_texture])
 
     plt.axis("off")
     plt.title("GT")
-    plt.imshow(softor(line_texture, device).detach().cpu().numpy())
+    plt.imshow(texture.detach().cpu().numpy())
     plt.show(block=True)
 
 
