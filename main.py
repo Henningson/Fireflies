@@ -165,6 +165,7 @@ def main():
 
         points = Laser.projectRaysToNDC()[:, 0:2]
         texture_init = rasterization.rasterize_points(points, sigma, tex_size)
+        texture_init = rasterization.softor(texture_init)
 
         hitpoints = cast_laser(Laser.originPerRay(), Laser.rays())
         world_points = Laser.originPerRay() + hitpoints * Laser.rays()

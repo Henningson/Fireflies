@@ -27,12 +27,10 @@ def rasterize_points(points: torch.tensor, sigma: float, texture_size: torch.ten
     point_distances = (y_dist*y_dist + x_dist*x_dist).sqrt() / (texture_size * texture_size).sum().sqrt()
     point_distances = torch.exp(-torch.pow(point_distances, 2) / (2 * sigma * sigma))
 
-    point_distances = point_distances.sum(dim=0)
-    point_distances = point_distances - point_distances.min()
     #a_points_distances = point_distances - point_distances.min()
     #b_point_distances = a_points_distances / a_points_distances.max()
 
-    return torch.clamp(point_distances, min=0.0, max=1.0)
+    return point_distances
 
 
 # We assume points to be in NDC [-1, 1]
@@ -95,7 +93,7 @@ def rasterize_lines(lines: torch.tensor, sigma: float, texture_size: torch.tenso
 
     # See: https://github.com/jonhare/DifferentiableSketching/blob/main/dsketch/raster/disttrans.py
     # If you found this, you should definitely give them a star. That's beautiful code they wrote there.
-    
+
     pa = (xy - lines_start)
     pb = (xy - lines_end)
     m = lines_end - lines_start
@@ -111,6 +109,11 @@ def rasterize_lines(lines: torch.tensor, sigma: float, texture_size: torch.tenso
     return torch.exp(-(distances*distances) / (sigma * sigma))
 
 
+def softor(texture: torch.tensor, dim=0, keepdim: bool = False) -> torch.tensor:  
+    return 1 - torch.prod(1 - texture, dim=dim, keepdim=keepdim)
+
+
+
 
 
 def main():
@@ -124,13 +127,12 @@ def main():
     #lines = torch.tensor([[[-1.0, -1.0], [1.0, 1.0]]], device=device)
     texture_size = torch.tensor([512, 512], device=device)
     
-
     sigma = 30
     line_texture = rasterize_lines(lines, sigma, texture_size, device=device)
 
     plt.axis("off")
     plt.title("GT")
-    plt.imshow(line_texture.sum(dim=0).detach().cpu().numpy())
+    plt.imshow(softor(line_texture, device).detach().cpu().numpy())
     plt.show(block=True)
 
 
