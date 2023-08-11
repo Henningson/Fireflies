@@ -68,8 +68,7 @@ def rasterize_depth(points: torch.tensor, depth_vals: torch.tensor, sigma: float
 
 
 def rasterize_lines(lines: torch.tensor, sigma: float, texture_size: torch.tensor, device: torch.cuda.device = torch.device("cuda")) -> torch.tensor:
-    # lines are in NDC
-
+    # lines are in NDC [-1,  1]
     tex = torch.zeros(texture_size.tolist(), dtype=torch.float32, device=device)
     tex = tex[None, ...]
     tex = tex.repeat((lines.shape[0], 1, 1, 1))
@@ -77,8 +76,8 @@ def rasterize_lines(lines: torch.tensor, sigma: float, texture_size: torch.tenso
     # Convert points to 0 -> 1
     lines = lines*0.5 + 0.5
 
-    lines_start = lines[:, 0:2]
-    lines_end = lines[:, 2:4]
+    lines_start = lines[:, 0, :]
+    lines_end = lines[:, 1, :]
     
     # Somewhere between [0, texture_size] but in float
     lines_start *= texture_size
@@ -87,61 +86,51 @@ def rasterize_lines(lines: torch.tensor, sigma: float, texture_size: torch.tenso
     lines_start = lines_start.permute(1, 0).unsqueeze(-1).unsqueeze(-1)
     lines_end = lines_end.permute(1, 0).unsqueeze(-1).unsqueeze(-1)
     
-
     y, x = torch.meshgrid(torch.arange(0, texture_size[1], device=device), torch.arange(0, texture_size[0], device=device), indexing='ij')
     y = y.unsqueeze(0).repeat((lines.shape[0], 1, 1))
     x = x.unsqueeze(0).repeat((lines.shape[0], 1, 1))   
     xy = torch.stack([x, y])
 
-    m = lines_end - lines_start
-    t = ((xy - lines_start) * m) / (m*m + torch.finfo().eps)
 
-    distance_smaller_zero = torch.linalg.norm(torch.where(t <= 0, 1, 0) * (xy - lines_start), dim=0)
-    distance_inbetween = torch.linalg.norm(torch.bitwise_and(torch.where(t > 0, 1, 0), torch.where(t < 1, 1, 0)) * (xy - (lines_start + t * m)), dim=0)
-    distance_greater_one = torch.linalg.norm(torch.where(t >= 1, 1, 0) * (xy - lines_end), dim=0)
+
+    # See: https://github.com/jonhare/DifferentiableSketching/blob/main/dsketch/raster/disttrans.py
+    # If you found this, you should definitely give them a star. That's beautiful code they wrote there.
+    
+    pa = (xy - lines_start)
+    pb = (xy - lines_end)
+    m = lines_end - lines_start
+
+    t0 = (pa * m).sum(dim=0) / ((m * m).sum(dim=0) + torch.finfo().eps)
+    patm = xy - (lines_start + t0.unsqueeze(0) * m)
+
+    distance_smaller_zero = (t0 <= 0) * (pa * pa).sum(dim=0)
+    distance_inbetween = (t0 > 0) * (t0 < 1) * (patm * patm).sum(dim=0)
+    distance_greater_one = (t0 >= 1) * (pb * pb).sum(dim=0)
 
     distances = distance_smaller_zero + distance_inbetween + distance_greater_one
-
-    #distances = torch.exp(-torch.linalg.norm(distances, dim=0) / sigma*sigma)
-
     return torch.exp(-(distances*distances) / (sigma * sigma))
-
 
 
 
 
 def main():
     device = "cuda" if torch.cuda.is_available() else "cpu"
-    import mitsuba as mi
-    mi.set_variant("cuda_ad_rgb")
+#    import mitsuba as mi
+#    mi.set_variant("cuda_ad_rgb")
 
 
-    points = (torch.rand([1000, 2], device=device) - 0.5) * 2.0
-    lines = (torch.rand([1, 4], device=device) - 0.5) * 2.0
-    sigma = 6
+    #points = (torch.rand([1000, 2], device=device) - 0.5) * 2.0
+    lines = (torch.rand([50, 2, 2], device=device) - 0.5) * 2.0
+    #lines = torch.tensor([[[-1.0, -1.0], [1.0, 1.0]]], device=device)
     texture_size = torch.tensor([512, 512], device=device)
-
-
-    #point_texture = rasterize_points(points, sigma, texture_size)
-    line_texture = rasterize_lines(lines, sigma, texture_size)
     
-    #scene_init = mi.load_file("scenes/proj_cbox.xml", spp=1024)
-    #params = mi.traverse(scene_init)
-    
-    #params["tex.data"] = mi.TensorXf(texture.cuda().unsqueeze(-1).repeat(1, 1, 3))
-    #params.update()
 
-    #render_init = mi.render(scene_init, spp=1024)
-    #image_init = mi.util.convert_to_bitmap(render_init)
-
-    #plt.axis("off")
-    #plt.title("GT")
-    #plt.imshow(point_texture.detach().cpu().numpy())
-    #plt.show(block=True)
+    sigma = 30
+    line_texture = rasterize_lines(lines, sigma, texture_size, device=device)
 
     plt.axis("off")
     plt.title("GT")
-    plt.imshow(line_texture[0].detach().cpu().numpy())
+    plt.imshow(line_texture.sum(dim=0).detach().cpu().numpy())
     plt.show(block=True)
 
 
