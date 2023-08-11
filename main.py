@@ -171,6 +171,8 @@ def main():
         world_points = Laser.originPerRay() + hitpoints * Laser.rays()
 
 
+
+
         # with torch.no_grad():
         #     import matplotlib.pyplot as plt
         #     fig = plt.figure()
@@ -225,6 +227,11 @@ def main():
         pred_depth = model(final_input.unsqueeze(0))
 
         loss = losses(pred_depth.repeat(1, 3, 1, 1), dense_depth.unsqueeze(0).unsqueeze(0).repeat(1, 3, 1, 1))
+
+        # lines = getEpipolarConstraintLines()
+        # epc_regularization = torch.nn.MSELoss()(rasterization.softor(lines), lines.sum(dim=0))
+        # loss += epc_regularization
+
         loss.backward()
 
         optim.step()

@@ -115,7 +115,8 @@ class Laser:
         points = self.projectRaysToNDC()[:, 0:2]
         return rasterization.rasterize_points(points, sigma, texture_size)
 
-
+#    def renderEpipolarLines(self, sigma: float, camera: Camera) -> torch.tensor:
+#        return None
 
 
 class DeprecatedLaser:
