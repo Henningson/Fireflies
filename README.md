@@ -44,6 +44,13 @@ A simple example with an $L1$ loss is given here:
 https://github.com/Henningson/DSLPO/assets/27073509/18e3d63c-3b3e-4ca0-92d5-a2c28b9ebb44
 
 
+This can easily be repurposed for other primitive types.
+Here, another example with points:
+
+https://github.com/Henningson/DSLPO/assets/27073509/aedea7b6-8e5e-40c1-85ca-31760bd60a70
+
+
+
 # TODO
 ## Meshes
 ✅ Randomizable Vertices  
