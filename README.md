@@ -1,5 +1,7 @@
-# Firefly
-A library for the generation and optimization of domain-specific laser pattern for single-shot structured light 3D reconstruction tasks.
+# Fireflies
+We present **Fireflies**, a library for the domain-specific optimization and generation of laser-based structured light pattern.
+This repository accompanies the paper **Fireflies: Laser-based Single Shot Structured Light a la Carte**.
+This is a joint work of the <a href="https://www.lgdv.tf.fau.de/">Chair of Visual Computing</a> of the Friedrich-Alexander University of Erlangen-Nuremberg and the <a href="https://www.hno-klinik.uk-erlangen.de/phoniatrie/">Phoniatric Division</a> of the University Hospital Erlangen. 
 
 
 # Building your own Scene
