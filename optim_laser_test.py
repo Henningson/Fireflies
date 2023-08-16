@@ -1,7 +1,7 @@
 import drjit as dr
 import mitsuba as mi
 mi.set_variant("cuda_ad_rgb")
-import laser_torch
+import laser
 import transforms
 import utils_torch
 import utils_np
@@ -97,10 +97,10 @@ def render_depth(scene, spp=64):
 def main():
     global global_scene, global_params, global_key
     device = torch.device("cuda")
-    laser_reference = laser_torch.DeprecatedLaser(20, 20, 0.5, torch.eye(4), torch.tensor([0.0, 0.0, 0.0]), max_fov=12)
+    laser_reference = laser.DeprecatedLaser(20, 20, 0.5, torch.eye(4), torch.tensor([0.0, 0.0, 0.0]), max_fov=12)
     laser_reference.initRandomRays()
 
-    laser_init = laser_torch.DeprecatedLaser(20, 20, 0.5, torch.eye(4), torch.tensor([0.0, 0.0, 0.0]), max_fov=12)
+    laser_init = laser.DeprecatedLaser(20, 20, 0.5, torch.eye(4), torch.tensor([0.0, 0.0, 0.0]), max_fov=12)
     sigma = 0.001
     texture_size = torch.tensor([512, 512], device=device)
 

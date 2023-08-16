@@ -34,12 +34,11 @@ Generation and optimization of domain-specific laser pattern for single-shot str
 ❌ Weighted segmentation maps  
 ✅ Take epipolar lines into account  
 ✅ Laser Pattern FOV constraints  
-❌ Weighted object significance  
 
 ## Optimization
-❌ Averaged Gradient Step  
 ✅ UNet based Depthmap inpainting  
 ❌ Add noise  
+✅ Epipolar Constrains in optimization
 
 ## Experiments
 ❌ Semi Global Matching?  

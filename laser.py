@@ -30,6 +30,8 @@ class Laser:
         self._rays = ray_directions.to(self.device)
         self._origin = self._to_world[0:3, 3]
         self._perspective = utils_torch.build_projection_matrix(max_fov, near_clip, far_clip).to(self.device)
+        self._near_clip = near_clip
+        self._far_clip = far_clip
 
     
     def rays(self) -> torch.tensor:
@@ -39,9 +41,18 @@ class Laser:
     def origin(self) -> torch.tensor:
         return self._origin
 
+
     def originPerRay(self) -> torch.tensor:
         return self._origin.unsqueeze(0).repeat(self._rays.shape[0], 1)
 
+
+    def near_clip(self) -> float:
+        return self._near_clip
+    
+
+    def far_clip(self) -> float:
+        return self._far_clip
+    
 
     def initRandomRays(self):
         # Spawn random points in [-1.0, 1.0]
@@ -93,9 +104,11 @@ class Laser:
 
         self._rays[:] = new_rays
 
+
     def normalize(self, tensor: torch.tensor) -> torch.tensor:
         return tensor / torch.linalg.norm(tensor, dim=-1, keepdims=True)
-    
+
+
     def normalize_rays(self) -> None:
         self._rays[:] = self.normalize(self._rays)
     
@@ -108,15 +121,37 @@ class Laser:
         #rays_in_world = transforms_torch.transform_directions(self._rays, self._to_world)
         return transforms.transform_points(self._rays, self._perspective)
     
+
     def projectNDCPointsToWorld(self, points: torch.tensor) -> torch.tensor:
         return transforms.transform_points(points, self._perspective.inverse())
     
+
     def generateTexture(self, sigma: float, texture_size: List[int]) -> torch.tensor:
         points = self.projectRaysToNDC()[:, 0:2]
         return rasterization.rasterize_points(points, sigma, texture_size)
 
-#    def renderEpipolarLines(self, sigma: float, camera: Camera) -> torch.tensor:
-#        return None
+    def render_epipolar_lines(self, params, sigma: float, texture_size: torch.tensor) -> torch.tensor:
+        epipolar_min = self.originPerRay() + self._near_clip * self.rays()
+        epipolar_max = self.originPerRay() + self._far_clip  * self.rays()
+
+        K = utils_torch.build_projection_matrix(params['PerspectiveCamera.x_fov'], params['PerspectiveCamera.near_clip'], params['PerspectiveCamera.far_clip'])
+        CAMERA_TO_WORLD = params["PerspectiveCamera.to_world"].matrix.torch()
+        
+        
+        # Project points into NDC
+        CAMERA_TO_WORLD = CAMERA_TO_WORLD.inverse()
+
+        epipolar_max = transforms.transform_points(epipolar_max, CAMERA_TO_WORLD)
+        epipolar_max = transforms.transform_points(epipolar_max, K)
+        epipolar_max = transforms.convert_points_from_homogeneous(epipolar_max)[0]
+
+        epipolar_min = transforms.transform_points(epipolar_min, CAMERA_TO_WORLD)
+        epipolar_min = transforms.transform_points(epipolar_min, K)
+        epipolar_min = transforms.convert_points_from_homogeneous(epipolar_min)[0]
+        
+        lines = torch.stack([epipolar_min, epipolar_max], dim=1)
+
+        return rasterization.rasterize_lines(lines, sigma, texture_size)
 
 
 class DeprecatedLaser:

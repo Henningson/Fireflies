@@ -6,6 +6,9 @@ import intersections
 import torch
 import utils_torch
 import transforms
+from scipy.spatial import ConvexHull, convex_hull_plot_2d
+import numpy as np
+import matplotlib.pyplot as plt
 
 
 def probability_distribution_from_depth_maps(
@@ -129,6 +132,14 @@ def generate_epipolar_constraints(scene, params, device):
     # to ensure optimization in specific epipolar range.
     epipolar_min = ray_origins
     epipolar_max = ray_origins + 10000 * ray_directions
+
+    fig = plt.figure()
+    ax = fig.add_subplot(1,1,1)
+    points = torch.vstack([epipolar_min[0:1], epipolar_max])[:, 0:2].detach().cpu().numpy()
+    hull = ConvexHull(points)
+    ax.plot(points[:, 0], points[:, 1])
+    convex_hull_plot_2d(hull, ax=ax)
+    plt.show(block=True)
 
     K = utils_torch.build_projection_matrix(params['PerspectiveCamera.x_fov'], params['PerspectiveCamera.near_clip'], params['PerspectiveCamera.far_clip'])
     CAMERA_TO_WORLD = params["PerspectiveCamera.to_world"].matrix.torch()

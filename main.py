@@ -11,7 +11,7 @@ import Firefly
 import LaserEstimation
 import depth
 import transforms
-import laser_torch
+import laser
 import UNet
 import rasterization
 import Losses
@@ -56,9 +56,9 @@ def main():
     weight = 0.001
     save_images = True
     spp=4
-    sigma=torch.tensor([0.008], device=DEVICE)
+    sigma=torch.tensor([12.0], device=DEVICE)
+    intersect_lambda = 0.0001
     num_upsamples = 3
-    upsample_at_iter = 2000
     iterations = 10000
 
 
@@ -121,7 +121,7 @@ def main():
     # Apply inverse rotation of the projector, such that we get a normalized direction
     # The laser direction up until now is in world coordinates!
     local_laser_dir = transforms.transform_directions(laser_dir, laser_to_world.inverse())
-    Laser = laser_torch.Laser(laser_to_world, local_laser_dir, fov, near_clip, far_clip)
+    Laser = laser.Laser(laser_to_world, local_laser_dir, fov, 0.5, 1.0)
 
     # Init U-Net and params
     UNET_CONFIG = {
@@ -228,9 +228,9 @@ def main():
 
         loss = losses(pred_depth.repeat(1, 3, 1, 1), dense_depth.unsqueeze(0).unsqueeze(0).repeat(1, 3, 1, 1))
 
-        # lines = getEpipolarConstraintLines()
-        # epc_regularization = torch.nn.MSELoss()(rasterization.softor(lines), lines.sum(dim=0))
-        # loss += epc_regularization
+        lines = Laser.render_epipolar_lines(global_params, sigma, tex_size)
+        epc_regularization = torch.nn.MSELoss()(rasterization.softor(lines), lines.sum(dim=0))
+        loss += epc_regularization * intersect_lambda
 
         loss.backward()
 
@@ -251,8 +251,9 @@ def main():
                 #rendering = torch.clamp(input, 0, 1).detach().cpu().numpy()
                 rendering = torch.clamp(sparse_depth, 0, 1).sum(dim=0).unsqueeze(-1).repeat(1, 1, 3).detach().cpu().numpy()
                 texture = texture_init.unsqueeze(-1).repeat(1, 1, 3).detach().cpu().numpy()
+                epipolar_lines = rasterization.softor(lines).unsqueeze(-1).repeat(1, 1, 3).detach().cpu().numpy()
 
-                concat_im = np.hstack([rendering, texture, pred_depth_map, gt_depth_map])
+                concat_im = np.hstack([rendering, texture, epipolar_lines, pred_depth_map, gt_depth_map])
 
                 scale_percent = 200 # percent of original size
                 width = int(concat_im.shape[1] * scale_percent / 100)
@@ -262,7 +263,7 @@ def main():
                 concat_im = cv2.resize(concat_im, dim, interpolation=cv2.INTER_AREA)
                 cv2.imshow("Predicted Depth Map", concat_im)
                 cv2.waitKey(1)
-                cv2.imwrite("ims/{0:05d}.png".format(i), (concat_im*255).astype(np.uint8))
+                #cv2.imwrite("ims/{0:05d}.png".format(i), (concat_im*255).astype(np.uint8))
 
 
 if __name__ == "__main__":
