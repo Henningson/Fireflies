@@ -117,6 +117,9 @@ def softor(texture: torch.tensor, dim=0, keepdim: bool = False) -> torch.tensor:
 def test_line_reg():
     import cv2
     import numpy as np
+    from tqdm import tqdm
+    from pygifsicle import optimize
+    import imageio
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     
@@ -124,16 +127,17 @@ def test_line_reg():
     lines.requires_grad = True
     sigma = torch.tensor([200.0], device=device)
     texture_size = torch.tensor([512, 512], device=device)
-    loss_func = torch.nn.MSELoss()
+    loss_func = torch.nn.L1Loss()
 
     opt_steps = 1000
 
     optim = torch.optim.Adam([
-        {'params': lines,  'lr': 0.1},
-        {'params': sigma,  'lr': 0.1},
+        {'params': lines,  'lr': 0.05},
+        {'params': sigma,  'lr': 1.0},
         ])
     
-    for i in range(opt_steps):
+    images = []
+    for i in tqdm(range(opt_steps)):
         optim.zero_grad()
 
         rasterized_lines = rasterize_lines(lines, sigma, texture_size)
@@ -145,15 +149,19 @@ def test_line_reg():
         loss.backward()
         optim.step()
 
+        if loss.item() < 0.0001:
+            break
+
         with torch.no_grad():
             lines[lines > 1.0] = torch.rand(1, device=device)
             lines[lines < -1.0] = torch.rand(1, device=device)
-            np_lines = cv2.applyColorMap((softored.detach().cpu().numpy()*255).astype(np.uint8), cv2.COLORMAP_CIVIDIS)
-
+            np_lines = cv2.applyColorMap((softored.detach().cpu().numpy()*255).astype(np.uint8), cv2.COLORMAP_VIRIDIS)
+            images.append(np_lines[:, :, [2, 1, 0]])
             cv2.imshow("Optim Lines", np_lines)
             cv2.waitKey(1)
             #lines.requires_grad = True
-
+    imageio.v3.imwrite("line_regularization.mp4", np.stack(images, axis=0), fps=25)
+    #optimize("line_regularization.gif")
 
 
 def main():
@@ -182,4 +190,4 @@ def main():
 
 if __name__ == "__main__":
     test_line_reg()
-    main()
+    #main()
