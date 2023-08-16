@@ -1,8 +1,13 @@
 # Firefly
-Generation and optimization of domain-specific laser pattern for single-shot structured light 3D reconstruction tasks.
+A library for the generation and optimization of domain-specific laser pattern for single-shot structured light 3D reconstruction tasks.
 
 
-# Epipolar Constraint regularization
+# Building your own Scene
+First, make sure you have the <a href="https://github.com/mitsuba-renderer/mitsuba-blender">Mitsuba Blender Add-On</a> installed.
+The Firefly Blender Add-On can be found in the ```blender``` folder.
+
+
+# Regarding the Epipolar Constraint regularization
 Our goal is to optimize a pattern that a) is purposely designed for the scene and b) does not contain any ambiguities.
 We can achieve this, by making sure that the epipolar lines inside the operating range of the structured light projector do not overlap.
 Naturally, this would lead to a **very** sparse pattern.
@@ -16,16 +21,16 @@ Then, lines do not cross if the *softor* representation (from "Differentiable Dr
 
 More rigorous for the discrete case:
 ```math
-\forall \left(a_{x},b_{x}\right),\left(a_{y},b_{y}\right) \in A \nexists s,t \in [0, 1]: a_{x}+sb_{x}=a_{y}+sb_{y}  
+\forall \left(a_{x},b_{x}\right),\left(a_{y},b_{y}\right) \in A \nexists s,t \in [0, 1]: a_{x}+sb_{x}=a_{y}+st_{y}  
 \Leftrightarrow  
 1 - \left(\prod_{i=0}^n 1 - I_{(i)} \right) = \sum_{i=0}^n I_{(i)}
 ```
 
 Now, we can repurpose this formulation in a continuous case, where $I^G_{(i)}$ is a differentiable (gaussian) representation of lines.
 ```math
-\forall \left(a_{x},b_{x}\right),\left(a_{y},b_{y}\right) \in A \quad \nexists s,t \in [0, 1]: a_{x}+sb_{x}=a_{y}+sb_{y}  
+\forall \left(a_{x},b_{x}\right),\left(a_{y},b_{y}\right) \in A \quad \nexists s,t \in [0, 1]: a_{x}+sb_{x}=a_{y}+st_{y}  
 \Leftrightarrow  
-\lim_{\sigma \rightarrow 0} \left(\sum_{i=0}^n I^G_{(i)} - 1 - \left(\prod_{i=0}^n 1 - I^G_{(i)} \right)\right) = 0
+\lim_{\sigma \rightarrow 0} \left(\sum_{i=0}^n I^G_{(i)} - \left(1 - \left(\prod_{i=0}^n 1 - I^G_{(i)} \right)\right)\right) = 0
 ```
 This allows us to easily optimize via
 ```math
