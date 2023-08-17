@@ -33,30 +33,35 @@ class ConfigArgsParser(dict):
             else:
                 Printer.KV2(key, value)
 
+    def asNamespace(self) -> argparse.Namespace:
+        return argparse.Namespace(**self)
+
 if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(
                     prog = 'Keypoint Regularized Training for Semantic Segmentation',
                     description = 'Train a Segmentation Network that is optimized for simultaneously outputting keypoints',
                     epilog = 'Arguments can be used to overwrite values in a config file.')
-    parser.add_argument("--config", type=str, default="config.yml")
-    parser.add_argument("--checkpoint", type=str)
-    parser.add_argument("--logwandb", action="store_true")
+    parser.add_argument("--scene_path", type=str, default="scenes/EasyCube")
 
-    parser.add_argument("--dataset_name", type=str)
-    parser.add_argument("--dataset_path", type=str)
+    parser.add_argument("--n_depthmaps", type=int, default=150, help="The number of depth maps to generate. Should rise with the complexity of the scene")
+    parser.add_argument("--variational_epsilon", type=float, default=0.001, help="Add this as a constant value to the initial sampling map to also sample from positions that do not vary in depth.")
+    
+    parser.add_argument("--save_images", type=bool, help="Should a video be saved?")
 
-    parser.add_argument("--model", type=str)
-    parser.add_argument("--learning_rate", type=float)
-    parser.add_argument("--batch_size", type=int)
-    parser.add_argument("--features", type=int, nargs="+")
-    parser.add_argument("--num_epochs", type=int)
-    parser.add_argument("--loss_weights", type=float, nargs="+")
-    parser.add_argument("--temporal_regularization_at", type=int)
-    parser.add_argument("--temporal_lambda", type=float)
-    parser.add_argument("--keypoint_regularization_at", type=int)
-    parser.add_argument("--nn_threshold", type=float)
-    parser.add_argument("--keypoint_lambda", type=float)
+
+    parser.add_argument("--n_beams", type=int, default=150, help="The number of laser beams.")
+    parser.add_argument("--spp", type=int, default=4, help="Define how many samples per pixel should be used in the path tracer.")
+    parser.add_argument("--sigma", type=float, default=12.0, help="Defines the diameter of the laser beams.")
+
+    parser.add_argument("--n_upsamples", type=int, default=3, help="How many times the images should be upsampled.")
+    parser.add_argument("--sequential", type=bool, help="Defines, if an animation is loaded sequentially.")
+
+    parser.add_argument("--lr_model", type=float, default=0.0001, help="Learning rate of the neural network")
+    parser.add_argument("--lr_laser", type=float, default=0.005, help="Learning rate of the laser rays.")
+    parser.add_argument("--lr_sigma", type=float, default=0.000001, help="Learning rate of the lasers sigma. Set to 0 if the laser spot size should not change.")    
+    parser.add_argument("--epipolar_constraint_lambda", type=float, default=0.0001, help="Defines the weight given to the epipolar constraint regularization. A higher value will disperse the laser beams, a very low value will have basically no effect.")
+
     
     args = parser.parse_args()
     CONFIG_PATH = "config.yml"

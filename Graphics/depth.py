@@ -2,7 +2,7 @@ import torch
 import mitsuba as mi
 mi.set_variant("cuda_ad_rgb")
 import drjit as dr
-import LaserEstimation
+import Graphics.LaserEstimation as LaserEstimation
 
 from tqdm import tqdm
 

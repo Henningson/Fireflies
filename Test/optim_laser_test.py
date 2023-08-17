@@ -1,12 +1,9 @@
 import drjit as dr
 import mitsuba as mi
 mi.set_variant("cuda_ad_rgb")
-import laser
-import transforms
-import utils_torch
-import utils_np
-import rasterization
-import rasterization
+import Objects.laser as laser
+import Utils.transforms as transforms
+import Graphics.rasterization as rasterization
 import matplotlib.pyplot as plt
 import torch
 import numpy as np

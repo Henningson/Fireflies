@@ -2,12 +2,12 @@ import os
 import mitsuba as mi
 mi.set_variant("cuda_ad_rgb")
 import drjit as dr
-import entity
+import Objects.entity as entity
 import torch
-import Firefly
-import LaserEstimation
+import Graphics.Firefly as Firefly
+import Graphics.LaserEstimation as LaserEstimation
 import matplotlib.pyplot as plt
-import depth
+import Graphics.depth as depth
 
 def test_render(firefly_scene, mitsuba_scene, mitsuba_params, num = 5):
     for i in range(num):

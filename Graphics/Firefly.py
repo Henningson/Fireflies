@@ -1,11 +1,11 @@
 from bs4 import BeautifulSoup
 from pathlib import Path
-import utils_io
 import os
 import mitsuba as mi
 mi.set_variant("cuda_ad_rgb")
 import drjit as dr
-import entity
+import Objects.entity as entity
+import Utils.utils as utils
 import torch
 
 class Scene:
@@ -16,7 +16,7 @@ class Scene:
                  steps_per_frame: int = 1, 
                  device: torch.cuda.device = torch.device("cuda")):
         
-        self.mi_xml = self.getMitsubaXML(base_path + "scene.xml")
+        self.mi_xml = self.getMitsubaXML(os.path.join(base_path, "scene.xml"))
         self.firefly_path = os.path.join(base_path, "Firefly")
         self.scene_params = scene_params
 
@@ -49,7 +49,7 @@ class Scene:
         # In this case, we enfore the name Camera
         sensor_name = "Projector"
         sensor_yaml_path = os.path.join(self.firefly_path, sensor_name + ".yaml")
-        sensor_config = utils_io.read_config_yaml(sensor_yaml_path)
+        sensor_config = utils.read_config_yaml(sensor_yaml_path)
 
         if self.camera is None:
             return
@@ -66,7 +66,7 @@ class Scene:
         # In this case, we enfore the name Camera
         sensor_name = "Camera"
         sensor_yaml_path = os.path.join(self.firefly_path, sensor_name + ".yaml")
-        sensor_config = utils_io.read_config_yaml(sensor_yaml_path)
+        sensor_config = utils.read_config_yaml(sensor_yaml_path)
 
         if not sensor_config["randomizable"]:
             return
@@ -91,7 +91,7 @@ class Scene:
 
             mesh_name = self.getMeshName(mesh)
             mesh_yaml_path = os.path.join(self.firefly_path, mesh_name + ".yaml")
-            mesh_config = utils_io.read_config_yaml(mesh_yaml_path)
+            mesh_config = utils.read_config_yaml(mesh_yaml_path)
 
             if not mesh_config["randomizable"]:
                 continue

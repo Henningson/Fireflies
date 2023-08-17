@@ -1,8 +1,7 @@
 import torch
-import utils_io
-import utils_math
-import utils_torch
-import transforms
+import Utils.utils as utils
+import Utils.math as utilsmath
+import Utils.transforms as transforms
 import random
 from typing import List, Tuple
 import os
@@ -35,9 +34,9 @@ class BaseEntity:
         self._yaw   = yaw
         self._roll  = roll
 
-        yaw_mat   = utils_math.getYawTransform(yaw, self._device)
-        pitch_mat = utils_math.getPitchTransform(pitch, self._device)
-        roll_mat  = utils_math.getRollTransform(roll, self._device)
+        yaw_mat   = utilsmath.getYawTransform(yaw, self._device)
+        pitch_mat = utilsmath.getPitchTransform(pitch, self._device)
+        roll_mat  = utilsmath.getRollTransform(roll, self._device)
 
         self._rotation = yaw_mat @ pitch_mat @ roll_mat
 
@@ -138,20 +137,20 @@ class RandomizableCamera:
 
 
     def sampleRotation(self) -> torch.tensor:
-        xRot = utils_math.uniformBetweenValues(self.rot_min_x, self.rot_max_x)
-        yRot = utils_math.uniformBetweenValues(self.rot_min_y, self.rot_max_y)
-        zRot = utils_math.uniformBetweenValues(self.rot_min_z, self.rot_max_z)
+        xRot = utilsmath.uniformBetweenValues(self.rot_min_x, self.rot_max_x)
+        yRot = utilsmath.uniformBetweenValues(self.rot_min_y, self.rot_max_y)
+        zRot = utilsmath.uniformBetweenValues(self.rot_min_z, self.rot_max_z)
 
-        zMat   = utils_math.getYawTransform(zRot, self._device)
-        yMat = utils_math.getPitchTransform(yRot, self._device)
-        xMat  = utils_math.getRollTransform(xRot, self._device)
+        zMat = utilsmath.getYawTransform(zRot, self._device)
+        yMat = utilsmath.getPitchTransform(yRot, self._device)
+        xMat = utilsmath.getRollTransform(xRot, self._device)
 
         self._last_rotation = zMat @ yMat @ xMat
         return self._last_rotation
 
 
     def sampleTranslation(self) -> torch.tensor:
-        self._last_translation = utils_torch.randomBetweenTensors(self.min_translation, self.max_translation)
+        self._last_translation = utils.randomBetweenTensors(self.min_translation, self.max_translation)
         return self._last_translation
 
 
@@ -215,20 +214,20 @@ class Projector:
 
 
     def sampleRotation(self) -> torch.tensor:
-        xRot = utils_math.uniformBetweenValues(self.rot_min_x, self.rot_max_x)
-        yRot = utils_math.uniformBetweenValues(self.rot_min_y, self.rot_max_y)
-        zRot = utils_math.uniformBetweenValues(self.rot_min_z, self.rot_max_z)
+        xRot = utilsmath.uniformBetweenValues(self.rot_min_x, self.rot_max_x)
+        yRot = utilsmath.uniformBetweenValues(self.rot_min_y, self.rot_max_y)
+        zRot = utilsmath.uniformBetweenValues(self.rot_min_z, self.rot_max_z)
 
-        zMat   = utils_math.getYawTransform(zRot, self._device)
-        yMat = utils_math.getPitchTransform(yRot, self._device)
-        xMat  = utils_math.getRollTransform(xRot, self._device)
+        zMat = utilsmath.getYawTransform(zRot, self._device)
+        yMat = utilsmath.getPitchTransform(yRot, self._device)
+        xMat = utilsmath.getRollTransform(xRot, self._device)
 
         self._last_rotation = zMat @ yMat @ xMat
         return self._last_rotation
 
 
     def sampleTranslation(self) -> torch.tensor:
-        self._last_translation = utils_torch.randomBetweenTensors(self.min_translation, self.max_translation)
+        self._last_translation = utilsmath.randomBetweenTensors(self.min_translation, self.max_translation)
         return self._last_translation
 
 
@@ -344,7 +343,7 @@ class Randomizable:
 
     def sampleScale(self) -> torch.tensor:
         scaleMatrix = torch.eye(4, device=self._device)
-        random_translation = utils_torch.randomBetweenTensors(self.min_scale, self.max_scale)
+        random_translation = utils.randomBetweenTensors(self.min_scale, self.max_scale)
 
         scaleMatrix[0, 0] = random_translation[0]
         scaleMatrix[1, 1] = random_translation[1]
@@ -353,13 +352,13 @@ class Randomizable:
 
 
     def sampleRotation(self) -> torch.tensor:
-        xRot = utils_math.uniformBetweenValues(self.rot_min_x, self.rot_max_x)
-        yRot = utils_math.uniformBetweenValues(self.rot_min_y, self.rot_max_y)
-        zRot = utils_math.uniformBetweenValues(self.rot_min_z, self.rot_max_z)
+        xRot = utilsmath.uniformBetweenValues(self.rot_min_x, self.rot_max_x)
+        yRot = utilsmath.uniformBetweenValues(self.rot_min_y, self.rot_max_y)
+        zRot = utilsmath.uniformBetweenValues(self.rot_min_z, self.rot_max_z)
 
-        zMat   = utils_math.getYawTransform(zRot, self._device)
-        yMat = utils_math.getPitchTransform(yRot, self._device)
-        xMat  = utils_math.getRollTransform(xRot, self._device)
+        zMat = utilsmath.getYawTransform(zRot, self._device)
+        yMat = utilsmath.getPitchTransform(yRot, self._device)
+        xMat = utilsmath.getRollTransform(xRot, self._device)
 
         self._last_rotation = zMat @ yMat @ xMat
         return self._last_rotation
@@ -367,7 +366,7 @@ class Randomizable:
 
     def sampleTranslation(self) -> torch.tensor:
         translationMatrix = torch.eye(4, device=self._device)
-        random_translation = utils_torch.randomBetweenTensors(self.min_translation, self.max_translation)
+        random_translation = utils.randomBetweenTensors(self.min_translation, self.max_translation)
 
         translationMatrix[0, 3] = random_translation[0]
         translationMatrix[1, 3] = random_translation[1]

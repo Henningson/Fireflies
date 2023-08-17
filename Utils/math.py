@@ -33,7 +33,7 @@ def getRollTransform(alpha: float, _device: torch.cuda.device) -> torch.tensor:
 
 
 def test():
-    import transforms
+    import Utils.transforms as transforms
 
     roll = 0.0
     pitch = 3.141/2.0

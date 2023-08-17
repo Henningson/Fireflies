@@ -16,7 +16,7 @@ def rasterize_points(points: torch.tensor, sigma: float, texture_size: torch.ten
     points *= texture_size
 
     # Generate x, y indices
-    y, x = torch.meshgrid(torch.arange(0, texture_size[1], device=device), torch.arange(0, texture_size[0], device=device), indexing='ij')
+    x, y = torch.meshgrid(torch.arange(0, texture_size[1], device=device), torch.arange(0, texture_size[0], device=device), indexing='ij')
     y = y.unsqueeze(0).repeat((points.shape[0], 1, 1))
     x = x.unsqueeze(0).repeat((points.shape[0], 1, 1))    
 
@@ -45,7 +45,7 @@ def rasterize_depth(points: torch.tensor, depth_vals: torch.tensor, sigma: float
     points *= texture_size
 
     # Generate x, y indices
-    y, x = torch.meshgrid(torch.arange(0, texture_size[1], device=device), torch.arange(0, texture_size[0], device=device), indexing='ij')
+    x, y = torch.meshgrid(torch.arange(0, texture_size[1], device=device), torch.arange(0, texture_size[0], device=device), indexing='ij')
     y = y.unsqueeze(0).repeat((points.shape[0], 1, 1))
     x = x.unsqueeze(0).repeat((points.shape[0], 1, 1))    
 

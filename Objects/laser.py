@@ -1,11 +1,10 @@
-import mitsuba as mi
 import drjit as dr
 import torch
-import utils_torch
+import Utils.utils as utils
 import numpy as np
 import math
-import rasterization
-import transforms
+import Graphics.rasterization as rasterization
+import Utils.transforms as transforms
 
 from typing import List
 
@@ -29,7 +28,7 @@ class Laser:
         self._to_world = to_world.to(self.device)
         self._rays = ray_directions.to(self.device)
         self._origin = self._to_world[0:3, 3]
-        self._perspective = utils_torch.build_projection_matrix(max_fov, near_clip, far_clip).to(self.device)
+        self._perspective = utils.build_projection_matrix(max_fov, near_clip, far_clip).to(self.device)
         self._near_clip = near_clip
         self._far_clip = far_clip
 
@@ -134,7 +133,7 @@ class Laser:
         epipolar_min = self.originPerRay() + self._near_clip * self.rays()
         epipolar_max = self.originPerRay() + self._far_clip  * self.rays()
 
-        K = utils_torch.build_projection_matrix(params['PerspectiveCamera.x_fov'], params['PerspectiveCamera.near_clip'], params['PerspectiveCamera.far_clip'])
+        K = utils.build_projection_matrix(params['PerspectiveCamera.x_fov'], params['PerspectiveCamera.near_clip'], params['PerspectiveCamera.far_clip'])
         CAMERA_TO_WORLD = params["PerspectiveCamera.to_world"].matrix.torch()
         
         
@@ -163,7 +162,7 @@ class DeprecatedLaser:
         self._rays = self.computeRays(intra_ray_angle, num_beams_x, num_beams_y).to(self.device)
         self._origin = origin.to(self.device)
         max_fov = num_beams_x*intra_ray_angle if max_fov is None else max_fov
-        self._perspective = utils_torch.build_projection_matrix(max_fov, near_clip, far_clip).to(self.device)
+        self._perspective = utils.build_projection_matrix(max_fov, near_clip, far_clip).to(self.device)
 
     
     def rays(self) -> torch.tensor:
@@ -259,7 +258,7 @@ class DeprecatedLaser:
 if __name__ == "__main__":
     import mitsuba as mi
     mi.set_variant("cuda_ad_rgb")
-    import rasterization
+    import Graphics.rasterization as rasterization
     import matplotlib.pyplot as plt
     
 

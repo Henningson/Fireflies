@@ -1,20 +1,31 @@
 import os
 import cv2
 import torch
-torch.autograd.set_detect_anomaly(True)
+
+DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
+
 import numpy as np
 import mitsuba as mi
-mi.set_variant("llvm_ad_rgb")
+
+if DEVICE == "cuda":
+    mi.set_variant("cuda_ad_rgb")
+else:
+    mi.set_variant("llvm_ad_rgb")
+
 import drjit as dr
 
-import Firefly
-import LaserEstimation
-import depth
-import transforms
-import laser
-import UNet
-import rasterization
-import Losses
+import Graphics.Firefly as Firefly
+import Graphics.LaserEstimation as LaserEstimation
+import Graphics.depth as depth
+import Utils.transforms as transforms
+import Objects.laser as laser
+import Models.GatedUNet as GatedUNet
+import Graphics.rasterization as rasterization
+import Metrics.Losses as Losses
+import Utils.ConfigArgsParser as CAP
+import Utils.Args as Args
+import Utils.utils as utils
+
 
 from tqdm import tqdm
 
@@ -46,23 +57,14 @@ def main():
     global global_params
     global global_key
 
-
-    DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
-    base_path = "scenes/RotObject/"
-    num_depth_maps = 150
-    steps_per_frame = 5
-    sequentially_updated = True
-    num_point_samples = 150
-    weight = 0.001
-    save_images = True
-    spp=4
-    sigma=torch.tensor([12.0], device=DEVICE)
-    intersect_lambda = 0.001
-    num_upsamples = 3
-    iterations = 10000
-
-
-    global_scene = mi.load_file(os.path.join(base_path, "scene.xml"))
+    parser = Args.GlobalArgumentParser()
+    args = parser.parse_args()
+    config = CAP.ConfigArgsParser(utils.read_config_yaml(os.path.join(args.scene_path, "config.yml")), args)
+    config.printFormatted()
+    config = config.asNamespace()
+    
+    sigma = torch.tensor([config.sigma], device=DEVICE)
+    global_scene = mi.load_file(os.path.join(args.scene_path, "scene.xml"))
     global_params = mi.traverse(global_scene)
     global_params['Projector.to_world'] = global_params['PerspectiveCamera_1.to_world']
     global_params.update()
@@ -70,30 +72,29 @@ def main():
 
 
     constraint_map = LaserEstimation.generate_epipolar_constraints(global_scene, global_params, DEVICE)
-
     firefly_scene = Firefly.Scene(global_params, 
-                                  base_path, 
-                                  sequential_animation=sequentially_updated, 
-                                  steps_per_frame=steps_per_frame,
+                                  args.scene_path, 
+                                  sequential_animation=config.sequential, 
+                                  steps_per_frame=config.steps_per_anim,
                                   device=DEVICE)
 
     # Generate random depth maps by uniformly sampling from scene parameter ranges
-    depth_maps = depth.random_depth_maps(firefly_scene, global_scene, num_maps=num_depth_maps)
+    depth_maps = depth.random_depth_maps(firefly_scene, global_scene, num_maps=config.n_depthmaps)
 
     # Given depth maps, generate probability distribution
-    variance_map = LaserEstimation.probability_distribution_from_depth_maps(depth_maps, weight)
+    variance_map = LaserEstimation.probability_distribution_from_depth_maps(depth_maps, config.variational_epsilon)
     
     # Final multiplication and normalization
     final_sampling_map = variance_map * constraint_map
     final_sampling_map /= final_sampling_map.sum()
 
     # sample points for laser rays
-    chosen_points = LaserEstimation.points_from_probability_distribution(final_sampling_map, num_point_samples)
+    chosen_points = LaserEstimation.points_from_probability_distribution(final_sampling_map, config.n_beams)
 
     vm = variance_map.cpu().numpy()
     cp = chosen_points.cpu().numpy()
     cm = constraint_map.cpu().numpy()
-    if save_images:
+    if config.save_images:
         vm = (vm*255).astype(np.uint8)
         vm = cv2.applyColorMap(vm, cv2.COLORMAP_VIRIDIS)
         vm.reshape(-1, 3)[cp, :] = ~vm.reshape(-1, 3)[cp, :]
@@ -121,14 +122,14 @@ def main():
     # Apply inverse rotation of the projector, such that we get a normalized direction
     # The laser direction up until now is in world coordinates!
     local_laser_dir = transforms.transform_directions(laser_dir, laser_to_world.inverse())
-    Laser = laser.Laser(laser_to_world, local_laser_dir, fov, 0.5, 1.0)
+    Laser = laser.Laser(laser_to_world, local_laser_dir, fov, near_clip, far_clip)
 
     # Init U-Net and params
     UNET_CONFIG = {
-        'in_channels': num_point_samples + 3, 
+        'in_channels': config.n_beams + 3, 
         'out_channels': 1, 
         'features': [32, 64, 128, 256, 512]}
-    model = UNet.Model(config=UNET_CONFIG, device=DEVICE).to(DEVICE)
+    model = GatedUNet.Model(config=UNET_CONFIG, device=DEVICE).to(DEVICE)
     model.train()
     
     losses = Losses.Handler([
@@ -141,15 +142,16 @@ def main():
     sigma.requires_grad = True
 
     optim = torch.optim.Adam([
-        {'params': model.parameters(),  'lr': 0.0001}, 
-        {'params': Laser._rays,         'lr': 0.005},
-        {'params': sigma,               'lr': 0.00001}
+        {'params': model.parameters(),  'lr': config.lr_model}, 
+        {'params': Laser._rays,         'lr': config.lr_laser},
+        {'params': sigma,               'lr': config.lr_sigma}
         ])
 
 
-    upsampling = [global_scene.sensors()[0].film().size() // 2**i for i in range(num_upsamples-1, -1, -1)]
+    upsampling = [global_scene.sensors()[0].film().size() // 2**i 
+                  for i in range(config.n_upsamples - 1, -1, -1)]
     upsampling_step = 0
-    for i in (progress_bar := tqdm(range(iterations))):
+    for i in (progress_bar := tqdm(range(config.iterations))):
         #if i % upsample_at_iter == 0 and upsampling_step + 1 != num_upsamples:
         #    global_params['PerspectiveCamera.film.size'] = upsampling[upsampling_step]
         #    upsampling_step += 1
@@ -157,10 +159,6 @@ def main():
 
 
         optim.zero_grad()
-
-        #print(Laser._rays[0])
-
-
         firefly_scene.randomize()
 
         points = Laser.projectRaysToNDC()[:, 0:2]
@@ -170,30 +168,18 @@ def main():
         hitpoints = cast_laser(Laser.originPerRay(), Laser.rays())
         world_points = Laser.originPerRay() + hitpoints * Laser.rays()
 
-
-
-
-        # with torch.no_grad():
-        #     import matplotlib.pyplot as plt
-        #     fig = plt.figure()
-        #     ax = fig.add_subplot(projection='3d')
-        #     np_world = world_points.detach().cpu().numpy()
-        #     ax.scatter(np_world[:, 0], np_world[:, 1], np_world[:, 2])
-        #     plt.show()
-
-
         ndc_points = transforms.project_to_camera_space(global_params, world_points).squeeze()
 
         sensor_size = torch.tensor(global_scene.sensors()[0].film().size(), device=DEVICE)
-        sparse_depth = rasterization.rasterize_depth(ndc_points[:, 0:2], ndc_points[:, 2:3], sigma, sensor_size)
+        sparse_depth = rasterization.rasterize_depth(ndc_points[:, 0:2], ndc_points[:, 2:3], config.sigma, sensor_size)
 
-        rendered_image = render(texture_init.unsqueeze(-1), spp=spp, seed=i)
+        rendered_image = render(texture_init.unsqueeze(-1), spp=config.spp, seed=i)
         
 
         # WHERE'S THE MEMORY LEAK
-        dense_depth = depth.from_camera_non_wrapped(global_scene, spp).torch()
+        dense_depth = depth.from_camera_non_wrapped(global_scene, config.spp).torch()
 
-        dense_depth = dense_depth.reshape(sensor_size[0], sensor_size[1], spp).mean(dim=-1)
+        dense_depth = dense_depth.reshape(sensor_size[0], sensor_size[1], config.spp).mean(dim=-1)
         dense_depth = dense_depth - near_clip
         dense_depth = dense_depth / far_clip
         dense_depth = 1 - dense_depth
@@ -202,27 +188,7 @@ def main():
 
         sparse_depth = (sparse_depth - sparse_depth.min()) / (sparse_depth.max() - sparse_depth.min())
 
-
-        '''
-        import matplotlib.pyplot as plt
-        plt.axis("off")
-        plt.title("GT")
-        plt.imshow(sparse_depth.detach().cpu().numpy())
-        plt.show(block=True)
-
-        # Generate sparse depth map
-        #sparse_depth = depth.from_laser(global_scene, global_params, Laser)
-        #sparse_depths.append(torch.stack([sparse_depth, render_init]))
-
-        print("Init | GT | Depth")
-        plt.axis("off")
-        plt.title("Sparse Depth")
-        plt.imshow(dense_depth.detach().cpu().numpy())
-        plt.show(block=True)
-        '''
-
         # Use U-Net to interpolate
-        #pred_depth = model(sparse_depth.moveaxis(-1, 0).unsqueeze(0))
         final_input = torch.vstack([sparse_depth, rendered_image.moveaxis(-1, 0)])
         pred_depth = model(final_input.unsqueeze(0))
 
@@ -230,22 +196,17 @@ def main():
 
         lines = Laser.render_epipolar_lines(global_params, sigma, tex_size)
         epc_regularization = torch.nn.MSELoss()(rasterization.softor(lines), lines.sum(dim=0))
-        loss += epc_regularization * intersect_lambda
+        loss += epc_regularization * config.epipolar_constraint_lambda
 
         loss.backward()
-
         optim.step()
-
-        #if i % 100:
-        #    dr.registry_clear()
 
         progress_bar.set_description("Loss: {0:.4f}, Sigma: {1:.4f}".format(loss.item(), sigma.detach().cpu().numpy()[0]))
         with torch.no_grad():
-            #torch.cuda.empty_cache()
             Laser.randomize_out_of_bounds()
             Laser.normalize_rays()
 
-            if i % 1 == 0:
+            if config.visualize:
                 pred_depth_map = pred_depth[0, 0].unsqueeze(-1).repeat(1, 1, 3).detach().cpu().numpy()
                 gt_depth_map = dense_depth.unsqueeze(-1).repeat(1, 1, 3).detach().cpu().numpy()
                 #rendering = torch.clamp(input, 0, 1).detach().cpu().numpy()
@@ -255,7 +216,7 @@ def main():
 
                 concat_im = np.hstack([rendering, texture, epipolar_lines, pred_depth_map, gt_depth_map])
 
-                scale_percent = 200 # percent of original size
+                scale_percent = config.upscale # percent of original size
                 width = int(concat_im.shape[1] * scale_percent / 100)
                 height = int(concat_im.shape[0] * scale_percent / 100)
                 dim = (width, height)
@@ -263,7 +224,8 @@ def main():
                 concat_im = cv2.resize(concat_im, dim, interpolation=cv2.INTER_AREA)
                 cv2.imshow("Predicted Depth Map", concat_im)
                 cv2.waitKey(1)
-                #cv2.imwrite("ims/{0:05d}.png".format(i), (concat_im*255).astype(np.uint8))
+                if config.save_images:
+                    cv2.imwrite("ims/{0:05d}.png".format(i), (concat_im*255).astype(np.uint8))
 
 
 if __name__ == "__main__":

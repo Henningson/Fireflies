@@ -1,5 +1,5 @@
 import torch
-import utils_torch
+import Utils.utils as utils
 
 def convert_points_to_homogeneous(points: torch.tensor) -> torch.tensor:
     return torch.nn.functional.pad(points, pad=(0, 1), mode="constant", value=1.0)
@@ -73,7 +73,7 @@ def project_to_camera_space(params, points) -> torch.tensor:
     far_clip = params['PerspectiveCamera.far_clip']
 
     # TODO: Refactor
-    perspective = utils_torch.build_projection_matrix(x_fov, near_clip, far_clip).to('cuda')
+    perspective = utils.build_projection_matrix(x_fov, near_clip, far_clip).to('cuda')
     
     camera_to_world = params["PerspectiveCamera.to_world"].matrix.torch()
 
