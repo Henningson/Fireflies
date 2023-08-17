@@ -112,6 +112,50 @@ def softor(texture: torch.tensor, dim=0, keepdim: bool = False) -> torch.tensor:
     return 1 - torch.prod(1 - texture, dim=dim, keepdim=keepdim)
 
 
+def test_point_reg():
+    import cv2
+    import numpy as np
+    from tqdm import tqdm
+    from pygifsicle import optimize
+    import imageio
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    
+    points = (torch.rand([500, 2], device=device) - 0.5) * 2.0
+    points.requires_grad = True
+    sigma = torch.tensor([100.0], device=device)
+    texture_size = torch.tensor([512, 512], device=device)
+    loss_func = torch.nn.L1Loss()
+
+    opt_steps = 200
+
+    optim = torch.optim.Adam([
+        {'params': points,  'lr': 0.05}
+        ])
+    
+    images = []
+    for i in tqdm(range(opt_steps)):
+        optim.zero_grad()
+
+        rasterized_points = rasterize_points(points, sigma, texture_size)
+
+        softored = softor(rasterized_points)
+        summed = rasterized_points.sum(dim=0)
+
+        loss = loss_func(softored, summed)
+        loss.backward()
+        optim.step()
+
+        with torch.no_grad():
+            points[points > 1.0] = 1.0
+            points[points < -1.0] = -1.0
+            np_points = cv2.applyColorMap((softored.detach().cpu().numpy()*255).astype(np.uint8), cv2.COLORMAP_VIRIDIS)
+            images.append(np_points[:, :, [2, 1, 0]])
+            cv2.imshow("Optim Lines", np_points)
+            cv2.waitKey(1)
+            #lines.requires_grad = True
+    imageio.v3.imwrite("point_regularization.mp4", np.stack(images, axis=0), fps=25)
+
 
 
 def test_line_reg():
@@ -153,7 +197,7 @@ def test_line_reg():
             break
 
         with torch.no_grad():
-            lines[lines > 1.0] = torch.rand(1, device=device)
+            lines[lines > 1.0] = 1.0
             lines[lines < -1.0] = torch.rand(1, device=device)
             np_lines = cv2.applyColorMap((softored.detach().cpu().numpy()*255).astype(np.uint8), cv2.COLORMAP_VIRIDIS)
             images.append(np_lines[:, :, [2, 1, 0]])
@@ -189,5 +233,6 @@ def main():
 
 
 if __name__ == "__main__":
+    #test_point_reg()
     test_line_reg()
     #main()

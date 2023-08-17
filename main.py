@@ -57,7 +57,7 @@ def main():
     save_images = True
     spp=4
     sigma=torch.tensor([12.0], device=DEVICE)
-    intersect_lambda = 0.0001
+    intersect_lambda = 0.001
     num_upsamples = 3
     iterations = 10000
 
