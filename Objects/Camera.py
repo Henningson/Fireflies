@@ -1,39 +1,43 @@
 import torch
-import utils_torch
+import Utils.utils
+import Objects.Transformable as Transformable
+import Utils.transforms
 
 class Camera:
     id = 0
-
-    MITSUBA_CAMERA_KEYS = {
+    MITSUBA_KEYS = {
         'fov': 'x_fov',
+        'f'  : 'x_fov',
         'to_world': 'to_world',
-
-        
+        'world': 'to_world',
         }
 
 
-    def __init__(self, to_world: torch.tensor, fov: float, near_clip: float = 0.01, far_clip: float = 1000.0, device: torch.cuda.device = torch.device("cuda")):
+    def __init__(self, transform: Transformable.Transformable, fov: float, near_clip: float = 0.01, far_clip: float = 1000.0, device: torch.cuda.device = torch.device("cuda")):
         self.device = device
         
-        self._to_world = to_world.to(self.device)
-        self._origin = self._to_world[0:3, 3]
-        self._perspective = utils_torch.build_projection_matrix(fov, near_clip, far_clip).to(self.device)
+        self._transformable = transform
+        self._perspective = Utils.utils.build_projection_matrix(fov, near_clip, far_clip).to(self.device)
         self._near_clip = near_clip
         self._far_clip = far_clip
         self._fov = fov
         
-        self._mitsuba_key = self.generate_mitsuba_key()
+        self._key = self.generate_mitsuba_key()
         Camera.id += 1
 
 
-    def mitsuba_key(self, key: str):
-        return self._mitsuba_key + "." + Camera.MITSUBA_CAMERA_KEYS[key]
+    
+    def full_key(self, key: str):
+        return self._key + "." + Camera.MITSUBA_KEYS[key]
 
-    def mitsuba_base_key(self) -> str:
-        return self._mitsuba_key
+    
+    def key(self) -> str:
+        return self._key
 
+    
     def near_clip(self) -> float:
         return self._near_clip
+    
     
     def generate_mitsuba_key(self) -> str:
         if Camera.id == 0:
@@ -41,14 +45,28 @@ class Camera:
         
         return "PerspectiveCamera_{0}".format(id)
 
+    
     def far_clip(self) -> float:
         return self._far_clip
     
-    def origin(self) -> torch.tensor:
-        return self._origin
     
     def fov(self) -> torch.tensor:
         return self._fov
     
-    def to_world(self) -> torch.tensor:
-        return self._to_world
+    
+    def origin(self) -> torch.tensor:
+        return self._transformable.origin()
+
+
+    def world(self) -> torch.tensor:
+        return self._transformable.world()
+    
+
+    def randomize(self) -> None:
+        self._transformable.randomize()
+
+
+    def pointsToNDC(self, points) -> torch.tensor:
+        view_space_points = Utils.transforms.transform_points(points, self.world().inverse())
+        ndc_points = Utils.transforms.transform_points(view_space_points, self._perspective)
+        return ndc_points

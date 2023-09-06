@@ -122,7 +122,7 @@ def main():
     # Apply inverse rotation of the projector, such that we get a normalized direction
     # The laser direction up until now is in world coordinates!
     local_laser_dir = transforms.transform_directions(laser_dir, laser_to_world.inverse())
-    Laser = laser.Laser(laser_to_world, local_laser_dir, fov, near_clip, far_clip)
+    Laser = laser.Laser(firefly_scene.projector, local_laser_dir, fov, near_clip, far_clip)
 
     # Init U-Net and params
     UNET_CONFIG = {
@@ -175,8 +175,6 @@ def main():
 
         rendered_image = render(texture_init.unsqueeze(-1), spp=config.spp, seed=i)
         
-
-        # WHERE'S THE MEMORY LEAK
         dense_depth = depth.from_camera_non_wrapped(global_scene, config.spp).torch()
 
         dense_depth = dense_depth.reshape(sensor_size[0], sensor_size[1], config.spp).mean(dim=-1)
@@ -194,7 +192,7 @@ def main():
 
         loss = losses(pred_depth.repeat(1, 3, 1, 1), dense_depth.unsqueeze(0).unsqueeze(0).repeat(1, 3, 1, 1))
 
-        lines = Laser.render_epipolar_lines(global_params, sigma, tex_size)
+        lines = Laser.render_epipolar_lines(sigma, tex_size)
         epc_regularization = torch.nn.MSELoss()(rasterization.softor(lines), lines.sum(dim=0))
         loss += epc_regularization * config.epipolar_constraint_lambda
 

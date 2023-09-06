@@ -82,6 +82,7 @@ def generateSceneConstraints(context, mitsuba_path):
         obj_config["animated"]     = False
         obj_config["randomizable"] = False
         obj_config["is_relative"]  = False
+        obj_config["parent_name"]  = None
         print(obj.name)
         
         # Coordinate Shift!    
@@ -102,12 +103,15 @@ def generateSceneConstraints(context, mitsuba_path):
         
         if obj.parent is not None:
             obj_config["is_relative"]  = True
+            obj_config["parent_name"]  = obj.parent.name
             #obj_config = constraintDictFromRelativeObject(obj_config, obj)
         #else:
         obj_config = constraintDictFromObject(obj_config, obj)
         
         # Save as yaml file
         path = os.path.join(base_path, obj.name + ".yaml")
+        print(base_path)
+        print(obj.name)
         saveToYAML(path, obj_config)
         obj.select_set(False)
     
@@ -299,9 +303,8 @@ def generate_init_texture(base_path: str) -> None:
 if __name__ == "__main__":
     obj = bpy.context.active_object
     scene = bpy.context.scene
-    file_path = "/home/nu94waro/Desktop/test_blend/name.obj"
 
-    generateSceneConstraints(bpy.context, "/home/nu94waro/Desktop/TestMitsubaScene/")
+    generateSceneConstraints(bpy.context, "PATH")
 
 #if is_deformable(scene, obj):
 #    bpy.ops.export_scene.obj(filepath=file_path, use_selection=True, use_animation=True)

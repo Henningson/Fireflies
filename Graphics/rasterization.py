@@ -142,7 +142,7 @@ def test_point_reg():
         softored = softor(rasterized_points)
         summed = rasterized_points.sum(dim=0)
 
-        loss = loss_func(softored, summed)
+        loss = -loss_func(softored, summed)
         loss.backward()
         optim.step()
 
@@ -176,7 +176,7 @@ def test_line_reg():
     opt_steps = 1000
 
     optim = torch.optim.Adam([
-        {'params': lines,  'lr': 0.05},
+        {'params': lines,  'lr': 0.005},
         {'params': sigma,  'lr': 1.0},
         ])
     
@@ -189,12 +189,9 @@ def test_line_reg():
         softored = softor(rasterized_lines)
         summed = rasterized_lines.sum(dim=0)
 
-        loss = loss_func(softored, summed)
+        loss = -loss_func(softored, summed)
         loss.backward()
         optim.step()
-
-        if loss.item() < 0.0001:
-            break
 
         with torch.no_grad():
             lines[lines > 1.0] = 1.0
@@ -204,7 +201,7 @@ def test_line_reg():
             cv2.imshow("Optim Lines", np_lines)
             cv2.waitKey(1)
             #lines.requires_grad = True
-    imageio.v3.imwrite("line_regularization.mp4", np.stack(images, axis=0), fps=25)
+    #imageio.v3.imwrite("line_regularization.mp4", np.stack(images, axis=0), fps=25)
     #optimize("line_regularization.gif")
 
 
@@ -215,7 +212,7 @@ def main():
     lines = (torch.rand([30, 2, 2], device=device) - 0.5) * 2.0
     texture_size = torch.tensor([512, 512], device=device)
     
-    sigma = 50
+    sigma = 1000
 
     line_texture = rasterize_lines(lines, sigma, texture_size, device=device)
     line_texture = softor(line_texture)
@@ -230,9 +227,54 @@ def main():
     plt.imshow(texture.detach().cpu().numpy())
     plt.show(block=True)
 
+def test_square_reg():
+    import cv2
+    import numpy as np
+    from tqdm import tqdm
 
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    
+    sigma = torch.tensor([200.0], device=device)
+    texture_size = torch.tensor([512, 512], device=device)
+    loss_func = torch.nn.L1Loss()
+
+
+    square_centroids = torch.rand([50, 2], device=device) * texture_size
+    square_sizes = torch.rand([50, 1], device=device) * texture_size[0]
+
+    square_centroids.requires_grad = True
+
+
+
+    opt_steps = 1000
+
+    optim = torch.optim.Adam([
+        {'params': square_centroids,  'lr': 0.005},
+        {'params': sigma,  'lr': 1.0},
+        ])
+    
+    images = []
+    for i in tqdm(range(opt_steps)):
+        optim.zero_grad()
+
+        rasterized_lines = rasterize_squares(square_centroids, square_sizes, sigma, texture_size)
+
+        softored = softor(rasterized_lines)
+        summed = rasterized_lines.sum(dim=0)
+
+        loss = -loss_func(softored, summed)
+        loss.backward()
+        optim.step()
+
+        with torch.no_grad():
+            square_centroids[square_centroids > texture_size[0] - 1] = texture_size[0] - 1
+            square_centroids[square_centroids < 0.0] = 0.0
+            np_lines = cv2.applyColorMap((softored.detach().cpu().numpy()*255).astype(np.uint8), cv2.COLORMAP_VIRIDIS)
+            images.append(np_lines[:, :, [2, 1, 0]])
+            cv2.imshow("Optim Lines", np_lines)
+            cv2.waitKey(1)
 
 if __name__ == "__main__":
-    #test_point_reg()
-    test_line_reg()
+    test_point_reg()
+    #test_line_reg()
     #main()

@@ -4,9 +4,14 @@ import random
 from typing import List
 import yaml
 from pathlib import Path
+from geomdl import NURBS
+from geomdl.visualization import VisMPL
+
+
 
 def read_config_yaml(file_path: str) -> dict:
     return yaml.safe_load(Path(file_path).read_text())
+
 
 def singleRandomBetweenTensors(a: torch.tensor, b: torch.tensor) -> torch.tensor:
     assert a.size() == b.size()
@@ -97,3 +102,44 @@ def build_projection_matrix(fov: float, near_clip: float, far_clip: float, devic
     K[2, 3] = -(far_clip * near_clip) / (far_clip - near_clip)
 
     return K
+
+
+
+
+def importBlenderNurbsObj(path):
+    obj_file = open(path, 'r')
+    lines = obj_file.readlines()
+
+    control_points = []
+    deg = None
+    knotvector = None
+
+
+    for line in lines:
+        token = 'v '
+        if line.startswith('v '):
+            line = line.replace(token, '')
+            values = line.split(' ')
+            values = [float(value) for value in values]
+            control_points.append(values)
+            continue
+
+        token = 'deg '
+        if line.startswith(token):
+            line = line.replace(token, '')
+            deg = int(line)
+            continue
+
+        token = 'parm u '
+        if line.startswith(token):
+            line = line.replace(token, '')
+            values = line.split(' ')
+            knotvector = [float(value) for value in values]
+            continue
+
+    spline = NURBS.Curve()
+    spline.degree = deg
+    spline.ctrlpts = control_points
+    spline.knotvector = knotvector
+
+    return spline

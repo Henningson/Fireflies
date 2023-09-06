@@ -229,9 +229,7 @@ class Projector:
     def sampleTranslation(self) -> torch.tensor:
         self._last_translation = utilsmath.randomBetweenTensors(self.min_translation, self.max_translation)
         return self._last_translation
-
-
-
+    
 
     def getTransforms(self) -> torch.tensor:
         parentMat = self._parent.getLastTransform()

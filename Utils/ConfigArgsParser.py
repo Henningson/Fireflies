@@ -42,7 +42,7 @@ if __name__ == "__main__":
                     prog = 'Keypoint Regularized Training for Semantic Segmentation',
                     description = 'Train a Segmentation Network that is optimized for simultaneously outputting keypoints',
                     epilog = 'Arguments can be used to overwrite values in a config file.')
-    parser.add_argument("--scene_path", type=str, default="scenes/EasyCube")
+    parser.add_argument("--scene_path", type=str, default="scenes/RotObject")
 
     parser.add_argument("--n_depthmaps", type=int, default=150, help="The number of depth maps to generate. Should rise with the complexity of the scene")
     parser.add_argument("--variational_epsilon", type=float, default=0.001, help="Add this as a constant value to the initial sampling map to also sample from positions that do not vary in depth.")

@@ -4,13 +4,15 @@ import Utils.utils as utils
 def convert_points_to_homogeneous(points: torch.tensor) -> torch.tensor:
     return torch.nn.functional.pad(points, pad=(0, 1), mode="constant", value=1.0)
 
-def toMat4x4(mat: torch.tensor, addOne: bool=True) -> torch.tensor:
+
+def toMat4x4(mat: torch.tensor, addOne: bool = True) -> torch.tensor:
     mat4x4 = torch.nn.functional.pad(mat, pad=(0, 1, 0, 1), mode="constant", value=0.0)
 
     if addOne:
         mat4x4[3, 3] = 1.0
 
     return mat4x4
+
 
 def convert_points_from_homogeneous(points: torch.tensor) -> torch.tensor:
     return points[..., :-1] / points[..., -1:]
@@ -40,7 +42,6 @@ def transform_directions(points: torch.tensor, transform: torch.tensor) -> torch
     return points[..., :-1]
 
 
-
 def matToBlender(mat, device):
     init_rot = torch.eye(4, device=device)
     init_rot[0, 0] = -1.0
@@ -53,6 +54,7 @@ def matToBlender(mat, device):
 
     return coordinate_shift.inverse() @ mat @ init_rot.inverse()
 
+
 def matToMitsuba(mat, device):
     init_rot = torch.eye(4, device=device)
     init_rot[0, 0] = -1.0
@@ -64,7 +66,6 @@ def matToMitsuba(mat, device):
     coordinate_shift[1, 2] = 1.0
 
     return coordinate_shift @ mat @ init_rot
-
 
 
 def project_to_camera_space(params, points) -> torch.tensor:
