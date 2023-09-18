@@ -29,25 +29,30 @@ class Transformable:
         self._parent_name = config["parent_name"] if self._relative else None
         # Is loaded in a second step
         self._parent = None
+        self._child = None
 
+    def parent(self):
+        return self._parent
 
+    def child(self):
+        return self._child
 
     def name(self):
         return self._name
 
-
     def parentName(self) -> str:
         return self._parent_name
 
-
     def setWorld(self, _origin: List[List[float]]) -> None:
-        self._origin = torch.tensor(_origin, device=self._device)
-        self._world = self._origin
-
+        self._origin = transforms.matToBlender(torch.tensor(_origin, device=self._device), self._device)
+        self._world = self._origin.clone()
 
     def setParent(self, parent) -> None:
         self._parent = parent
+        parent.setChild(self)
 
+    def setChild(self, child) -> None:
+        self._child = child
 
     def setRotationBoundaries(self, rotation: dict) -> None:
         self.rot_min_x = rotation["min_x"]
@@ -68,8 +73,8 @@ class Transformable:
         yRot = utilsmath.uniformBetweenValues(self.rot_min_y, self.rot_max_y)
         zRot = utilsmath.uniformBetweenValues(self.rot_min_z, self.rot_max_z)
 
-        zMat = utilsmath.getYawTransform(zRot, self._device)
-        yMat = utilsmath.getPitchTransform(yRot, self._device)
+        zMat = utilsmath.getPitchTransform(zRot, self._device)
+        yMat = utilsmath.getYawTransform(yRot, self._device)
         xMat = utilsmath.getRollTransform(xRot, self._device)
 
         return transforms.toMat4x4(zMat @ yMat @ xMat)
@@ -88,6 +93,8 @@ class Transformable:
 
     def randomize(self) -> None:
         self._world = self.sampleTranslation() @ self.sampleRotation() @ self.origin()
+        #print(self._name)
+        #print(self._world)
 
 
     def relative(self) -> None:
@@ -98,25 +105,15 @@ class Transformable:
         if self._parent is None:
             return self._origin
 
-
-        #blendParentMat = transforms.matToBlender(self._parent.origin(), self._device)
-        #blendWorldMat = transforms.matToBlender(self._origin, self._device)
-        return self._parent.origin() @ self._origin#transforms.matToMitsuba(blendParentMat @ blendWorldMat, self._device)
+        return self._origin @ self._parent.origin()
 
 
     def world(self) -> torch.tensor:
         # If no parent exists, just return the current translation
-        # _offset_world and _world are equal, when there is no randomization going on.
         if self._parent is None:
             return self._world
 
         return self._parent.world() @ self._world
-        
-        #blendParentMat = transforms.matToBlender(self._parent.world(), self._device)
-        #blendWorldMat = transforms.matToBlender(self._world, self._device)
-        #return transforms.matToMitsuba(blendParentMat @ blendWorldMat, self._device)
-
-
 
 
 class Curve(Transformable):
@@ -149,7 +146,7 @@ class Curve(Transformable):
 
     def randomize(self) -> None:
         self._origin = self.sampleTranslation() @ self.sampleRotation()
-        self._world = self.sampleTranslation() @ self.sampleRotation()
+        self._world = self._origin
 
 
 

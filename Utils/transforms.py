@@ -55,17 +55,18 @@ def matToBlender(mat, device):
     return coordinate_shift.inverse() @ mat @ init_rot.inverse()
 
 
-def matToMitsuba(mat, device):
-    init_rot = torch.eye(4, device=device)
+def matToMitsuba(mat):
+    init_rot = torch.eye(4, device=mat.device)
     init_rot[0, 0] = -1.0
     init_rot[2, 2] = -1.0
-    coordinate_shift = torch.eye(4, device=device)
+    coordinate_shift = torch.eye(4, device=mat.device)
     coordinate_shift[1, 1] = 0.0
     coordinate_shift[2, 2] = 0.0
-    coordinate_shift[2, 1] = -1.0
+    coordinate_shift[2, 1] = 1.0
     coordinate_shift[1, 2] = 1.0
 
-    return coordinate_shift @ mat @ init_rot
+    return coordinate_shift @ mat @ coordinate_shift @ init_rot
+    #return mat @ init_rot
 
 
 def project_to_camera_space(params, points) -> torch.tensor:

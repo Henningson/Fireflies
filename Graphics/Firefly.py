@@ -10,6 +10,7 @@ import torch
 import Objects.laser as laser
 import Objects.Camera as Camera
 import Objects.Transformable as Transformable
+import Utils.transforms as transforms
 
 class Scene:
     def __init__(self, 
@@ -32,7 +33,7 @@ class Scene:
         self.lights = {}
         self.curves = []
 
-        self._transformables = []
+        self._parent_transformables = []
 
         self._device = device
 
@@ -56,7 +57,7 @@ class Scene:
         sensor_config = utils.read_config_yaml(sensor_yaml_path)
         
         self.projector = Transformable.Transformable(sensor_name, sensor_config, self._device)
-        self._transformables.append(self.projector)
+        self._parent_transformables.append(self.projector)
 
     
     def loadCameras(self):
@@ -65,7 +66,7 @@ class Scene:
         sensor_config = utils.read_config_yaml(sensor_yaml_path)
 
         self.camera = Transformable.Transformable(sensor_name, sensor_config, self._device)
-        self._transformables.append(self.camera)
+        self._parent_transformables.append(self.camera)
         
     
     def loadLights(self):
@@ -96,7 +97,7 @@ class Scene:
                                                               sequential_animation=self._sequential_animation,
                                                               base_path=self.firefly_path,
                                                               device=self._device)
-            self._transformables.append(self.meshes[temp_param_mesh])
+            self._parent_transformables.append(self.meshes[temp_param_mesh])
 
 
     def loadCurves(self):
@@ -113,16 +114,16 @@ class Scene:
             transformable_curve = Transformable.Curve(object_name, curve, config, self._device)
 
             self.curves.append(transformable_curve)
-            self._transformables.append(transformable_curve)
+            self._parent_transformables.append(transformable_curve)
 
 
 
     def connectParents(self):
-        for a in self._transformables:
+        for a in self._parent_transformables:
             if not a.relative():
                 continue
 
-            for b in self._transformables:
+            for b in self._parent_transformables:
                 if a == b:
                     continue
 
@@ -131,14 +132,22 @@ class Scene:
                     a.setParent(b)
 
 
+    def cleanParentTransformables(self) -> None:
+        self._parent_transformables = [transformable for transformable in self._parent_transformables if transformable.parent() is None]
+
+
     def initScene(self) -> None:
         self.loadMeshes()
         self.loadCameras()
         self.loadProjector()
         self.loadLights()
         self.loadCurves()
-
+        
+        # Connect relative objects
         self.connectParents()
+
+        # Filter non-parent objects from transformable list
+        self.cleanParentTransformables()
 
 
     def updateMeshes(self) -> None:
@@ -159,7 +168,8 @@ class Scene:
         key = "PerspectiveCamera"
 
         # Couldn't find a better way to get this torch tensor into mitsuba Transform4f
-        self.scene_params[key + ".to_world"] = mi.Transform4f(self.camera.world().tolist())
+        mitsuba_world = transforms.matToMitsuba(self.camera.origin()).tolist()
+        self.scene_params[key + ".to_world"] = mi.Transform4f(mitsuba_world)
 
 
     def updateProjector(self) -> None:
@@ -168,7 +178,7 @@ class Scene:
         
         # TODO: Remove key
         key = "Projector"
-        worldMatrix = self.projector.world()
+        worldMatrix = transforms.matToMitsuba(self.projector.origin())
 
         # TODO: Is there a better way here?
         # Couldn't find a better way to get this torch tensor into mitsuba Transform4f
@@ -182,8 +192,13 @@ class Scene:
 
     def randomize(self) -> None:
         # We first randomize all of our objects
-        for transformable in self._transformables:
+        for transformable in self._parent_transformables:
             transformable.randomize()
+
+            iterator_child = transformable.child()
+            while iterator_child is not None:
+                iterator_child.randomize()
+                iterator_child = iterator_child.child()
 
         # And then copy the updates to the mitsuba parameters
         self.updateMeshes()
@@ -213,20 +228,22 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     import cv2
 
-    base_path = "scenes/jaws/"
+    base_path = "scenes/TestbedWithBG/"
 
     mitsuba_scene = mi.load_file(os.path.join(base_path, "scene.xml"))
     mitsuba_params = mi.traverse(mitsuba_scene)
-    mitsuba_params["PerspectiveCamera.film.size"] = [1920//4, 1080//4]
+    mitsuba_params["PerspectiveCamera.film.size"] = [1080//4, 1080//4]
     mitsuba_params['Projector.to_world'] = mitsuba_params['PerspectiveCamera_1.to_world']
+    print(mitsuba_params['PerspectiveCamera_1.to_world'])
+
     firefly_scene = Scene(mitsuba_params, base_path)
 
 
     for i in tqdm(range(100000)):
         firefly_scene.randomize()
         
-        render = mi.render(mitsuba_scene, spp=32)
-        image = render.torch().clamp(0, 1).detach().cpu().numpy()
-
-        cv2.imshow("Render", image)
+        render = mi.render(mitsuba_scene, spp=2)
+        rendering = torch.clamp(render.torch(), 0, 1).detach().cpu().numpy()
+        cv2.imshow("Render", rendering)
         cv2.waitKey(1)
+ 

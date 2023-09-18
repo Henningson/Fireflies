@@ -70,6 +70,12 @@ def main():
     global_params.update()
     global_key = "tex.data"
 
+    import matplotlib.pyplot as plt
+    testrender = mi.render(global_scene)
+
+    plt.axis("off")
+    plt.imshow(testrender ** (1.0 / 2.2));
+    plt.show()
 
     constraint_map = LaserEstimation.generate_epipolar_constraints(global_scene, global_params, DEVICE)
     firefly_scene = Firefly.Scene(global_params, 
@@ -133,7 +139,7 @@ def main():
     model.train()
     
     losses = Losses.Handler([
-            [Losses.VGGPerceptual().to(DEVICE), 0.0],
+            #[Losses.VGGPerceptual().to(DEVICE), 0.0],
             [torch.nn.MSELoss().to(DEVICE), 1.0],
             #[torch.nn.L1Loss().to(DEVICE),  1.0]
             ])
