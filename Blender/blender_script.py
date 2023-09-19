@@ -32,7 +32,29 @@ def exportDeformableMesh(path, mesh):
     except:
         print("Path {0} does already exist.".format(mesh_path))
     
-    bpy.ops.export_scene.obj(filepath=mesh_path + "/" + mesh.name + ".obj", use_selection=True, use_animation=True)
+    bpy.ops.export_scene.obj(
+        filepath=mesh_path + "/" + mesh.name + ".obj", 
+        use_selection=True, 
+        use_animation=True,
+        axis_forward='Y',
+        axis_up='-Z')
+
+
+def exportCurve(path, curve):
+    mesh_path = os.path.join(path, curve.name)
+    try:
+        os.mkdir(mesh_path)
+    except:
+        print("Path {0} does already exist.".format(mesh_path))
+    
+    bpy.ops.export_scene.obj(
+        filepath=mesh_path + "/" + curve.name + ".obj", 
+        use_selection=True, 
+        use_animation=False, 
+        use_nurbs=True,
+        axis_forward='Y',
+        axis_up='-Z')
+
 
 def deselectObjects():
     for obj in bpy.data.objects:
@@ -80,13 +102,14 @@ def generateSceneConstraints(context, mitsuba_path):
         
         obj_config = {}
         obj_config["animated"]     = False
-        obj_config["randomizable"] = False
+        obj_config["randomizable"] = True
         obj_config["is_relative"]  = False
         obj_config["parent_name"]  = None
         print(obj.name)
         
-        # Coordinate Shift!    
-        mitsuba_world_transform = np.array(mat4x4ToMitsuba(obj.matrix_local))
+        # Coordinate Shift!
+        mitsuba_world_transform = np.array(obj.matrix_local)#np.array(mat4x4ToMitsuba(obj.matrix_local))
+        print(mitsuba_world_transform)
         obj_config["to_world"] = mitsuba_world_transform.tolist()
         print(obj.name)        
         
@@ -99,19 +122,23 @@ def generateSceneConstraints(context, mitsuba_path):
             else:
                 print(obj.name + " is not animated")
         
+        print(obj.type)
+        
+        # Gotta fix this
+        if obj.type == "CURVE" or obj.type == "SURFACE":
+            print("EXPORTING CURVE\n"*10)
+            exportCurve(base_path, obj)
         
         
         if obj.parent is not None:
-            obj_config["is_relative"]  = True
-            obj_config["parent_name"]  = obj.parent.name
+            obj_config["is_relative"] = True
+            obj_config["parent_name"] = obj.parent.name
             #obj_config = constraintDictFromRelativeObject(obj_config, obj)
         #else:
         obj_config = constraintDictFromObject(obj_config, obj)
         
         # Save as yaml file
         path = os.path.join(base_path, obj.name + ".yaml")
-        print(base_path)
-        print(obj.name)
         saveToYAML(path, obj_config)
         obj.select_set(False)
     
@@ -141,7 +168,7 @@ def constraintDictFromRelativeObject(constraint_dict, obj):
 
 
 def constraintDictFromObject(constraint_dict, obj):
-    mitsuba_local = mat4x4ToMitsuba(obj.matrix_local)
+    mitsuba_local = obj.matrix_local#mat4x4ToMitsuba(obj.matrix_local)
     local_rotation = mitsuba_local.to_euler()
     local_translation = mitsuba_local.to_translation()
     local_scale = mitsuba_local.to_scale()
@@ -304,7 +331,7 @@ if __name__ == "__main__":
     obj = bpy.context.active_object
     scene = bpy.context.scene
 
-    generateSceneConstraints(bpy.context, "PATH")
+    generateSceneConstraints(bpy.context, "/home/nu94waro/Documents/Vocalfold/DSLPO/scenes/TestbedWithBG/")
 
 #if is_deformable(scene, obj):
 #    bpy.ops.export_scene.obj(filepath=file_path, use_selection=True, use_animation=True)
