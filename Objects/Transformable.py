@@ -44,8 +44,8 @@ class Transformable:
         return self._parent_name
 
     def setWorld(self, _origin: List[List[float]]) -> None:
-        self._origin = transforms.matToBlender(torch.tensor(_origin, device=self._device), self._device)
-        self._world = self._origin.clone()
+        self._world = torch.tensor(_origin, device=self._device)
+        self._randomized_world = self._world.clone()
 
     def setParent(self, parent) -> None:
         self._parent = parent
@@ -92,28 +92,25 @@ class Transformable:
 
 
     def randomize(self) -> None:
-        self._world = self.sampleTranslation() @ self.sampleRotation() @ self.origin()
-        #print(self._name)
-        #print(self._world)
+        self._randomized_world = self.sampleTranslation() @ self.sampleRotation() @ self._world
 
 
     def relative(self) -> None:
         return self._relative
 
 
-    def origin(self) -> None:
-        if self._parent is None:
-            return self._origin
-
-        return self._origin @ self._parent.origin()
-
-
     def world(self) -> torch.tensor:
         # If no parent exists, just return the current translation
         if self._parent is None:
-            return self._world
+            return self._randomized_world
+        
+        return self._randomized_world @ self._parent.world()
 
-        return self._parent.world() @ self._world
+    def nonRandomizedWorld(self) -> torch.tensor:
+        if self._parent is None:
+            return self._world
+        
+        return self._world @ self._parent.nonRandomizedWorld()
 
 
 class Curve(Transformable):
@@ -125,8 +122,11 @@ class Curve(Transformable):
         Transformable.__init__(self, name, config, device)
         
         self._curve = curve
-        self._origin = torch.eye(4, device=self._device)
-        self._world  = torch.eye(4, device=self._device)
+        self._curve.ctrlpts = self.convertToLocal(self._curve.ctrlpts)
+
+
+    def convertToLocal(self, controlpoints: List[List[float]]) -> List[List[float]]:
+        return transforms.transform_points(torch.tensor(controlpoints).to(self._device), self._world).tolist()
 
 
     def sampleRotation(self) -> torch.tensor:
@@ -145,9 +145,7 @@ class Curve(Transformable):
         return translationMatrix
 
     def randomize(self) -> None:
-        self._origin = self.sampleTranslation() @ self.sampleRotation()
-        self._world = self._origin
-
+        self._randomized_world = self.sampleTranslation() @ self.sampleRotation() @ self._world
 
 
 class Mesh(Transformable):
@@ -194,7 +192,7 @@ class Mesh(Transformable):
 
 
     def randomize(self) -> None:
-        self._world = self.sampleTranslation() @ \
+        self._randomized_world = self.sampleTranslation() @ \
                       self.sampleRotation() @ \
                       self.sampleScale()
 
@@ -205,10 +203,6 @@ class Mesh(Transformable):
 
         # Transform by world transform
         temp_vertex = transforms.transform_points(temp_vertex, self.world())
-
-        if self._relative:
-            # Transform by parent transform
-            temp_vertex = transforms.transform_points(temp_vertex, self._parent.world())
 
         return temp_vertex
     

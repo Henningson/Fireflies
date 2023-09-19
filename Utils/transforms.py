@@ -1,5 +1,7 @@
 import torch
 import Utils.utils as utils
+import Utils.math as math
+import numpy as np
 
 def convert_points_to_homogeneous(points: torch.tensor) -> torch.tensor:
     return torch.nn.functional.pad(points, pad=(0, 1), mode="constant", value=1.0)
@@ -43,29 +45,31 @@ def transform_directions(points: torch.tensor, transform: torch.tensor) -> torch
 
 
 def matToBlender(mat, device):
-    init_rot = torch.eye(4, device=device)
-    init_rot[0, 0] = -1.0
-    init_rot[2, 2] = -1.0
+    
     coordinate_shift = torch.eye(4, device=device)
     coordinate_shift[1, 1] = 0.0
     coordinate_shift[2, 2] = 0.0
     coordinate_shift[2, 1] = -1.0
     coordinate_shift[1, 2] = 1.0
 
-    return coordinate_shift.inverse() @ mat @ init_rot.inverse()
+    return coordinate_shift.inverse() @ mat #@ init_rot.inverse()
 
 
 def matToMitsuba(mat):
-    init_rot = torch.eye(4, device=mat.device)
-    init_rot[0, 0] = -1.0
-    init_rot[2, 2] = -1.0
-    coordinate_shift = torch.eye(4, device=mat.device)
-    coordinate_shift[1, 1] = 0.0
-    coordinate_shift[2, 2] = 0.0
-    coordinate_shift[2, 1] = 1.0
-    coordinate_shift[1, 2] = 1.0
+    #init_rot = torch.zeros(4, device=mat.device)
+    #init_rot[0, 0] = -1.0
+    #init_rot[1, 2] = -1.0
+    
+    rotmat = toMat4x4(math.getPitchTransform(np.pi * 0.5, mat.device))
 
-    return coordinate_shift @ mat @ coordinate_shift @ init_rot
+    #coordinate_shift = torch.eye(4, device=mat.device)
+    #coordinate_shift[1, 1] = 0.0
+    #coordinate_shift[2, 2] = 0.0
+    #coordinate_shift[2, 1] = 1.0
+    #coordinate_shift[1, 2] = 1.0
+
+    return mat
+    #return coordinate_shift @ mat @ coordinate_shift @ init_rot 
     #return mat @ init_rot
 
 

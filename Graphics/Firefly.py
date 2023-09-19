@@ -11,6 +11,8 @@ import Objects.laser as laser
 import Objects.Camera as Camera
 import Objects.Transformable as Transformable
 import Utils.transforms as transforms
+import numpy as np
+import Utils.math as math
 
 class Scene:
     def __init__(self, 
@@ -168,8 +170,9 @@ class Scene:
         key = "PerspectiveCamera"
 
         # Couldn't find a better way to get this torch tensor into mitsuba Transform4f
-        mitsuba_world = transforms.matToMitsuba(self.camera.origin()).tolist()
-        self.scene_params[key + ".to_world"] = mi.Transform4f(mitsuba_world)
+        worldMatrix = self.camera.world()
+        worldMatrix[0:3, 0:3] = worldMatrix[0:3, 0:3] @ math.getPitchTransform(np.pi, self._device)
+        self.scene_params[key + ".to_world"] = mi.Transform4f(worldMatrix.tolist())
 
 
     def updateProjector(self) -> None:
@@ -178,7 +181,8 @@ class Scene:
         
         # TODO: Remove key
         key = "Projector"
-        worldMatrix = transforms.matToMitsuba(self.projector.origin())
+        worldMatrix = self.projector.world()
+        worldMatrix[0:3, 0:3] = worldMatrix[0:3, 0:3] @ math.getPitchTransform(np.pi, self._device)
 
         # TODO: Is there a better way here?
         # Couldn't find a better way to get this torch tensor into mitsuba Transform4f
@@ -236,14 +240,25 @@ if __name__ == "__main__":
     mitsuba_params['Projector.to_world'] = mitsuba_params['PerspectiveCamera_1.to_world']
     print(mitsuba_params['PerspectiveCamera_1.to_world'])
 
+
+
+    render = mi.render(mitsuba_scene, spp=20)
+    import matplotlib.pyplot as plt
+
+    plt.axis("off")
+    plt.imshow(render ** (1.0 / 2.2))
+    plt.show()
+
     firefly_scene = Scene(mitsuba_params, base_path)
+
 
 
     for i in tqdm(range(100000)):
         firefly_scene.randomize()
         
-        render = mi.render(mitsuba_scene, spp=2)
-        rendering = torch.clamp(render.torch(), 0, 1).detach().cpu().numpy()
-        cv2.imshow("Render", rendering)
+        render = mi.render(mitsuba_scene, spp=20)
+        render = torch.clamp(render.torch(), 0, 1).cpu().numpy()
+        cv2.imshow("Render", render)
         cv2.waitKey(1)
+
  
