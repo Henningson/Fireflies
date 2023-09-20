@@ -93,6 +93,7 @@ class Transformable:
 
     def randomize(self) -> None:
         self._randomized_world = self.sampleTranslation() @ self.sampleRotation() @ self._world
+        pass
 
 
     def relative(self) -> None:
@@ -104,13 +105,13 @@ class Transformable:
         if self._parent is None:
             return self._randomized_world
         
-        return self._randomized_world @ self._parent.world()
+        return self._parent.world() @ self._randomized_world
 
     def nonRandomizedWorld(self) -> torch.tensor:
         if self._parent is None:
             return self._world
         
-        return self._world @ self._parent.nonRandomizedWorld()
+        return self._parent.nonRandomizedWorld() @ self._world
 
 
 class Curve(Transformable):
@@ -125,15 +126,20 @@ class Curve(Transformable):
         
         self._curve = curve
         self._curve.ctrlpts = self.convertToLocal(self._curve.ctrlpts)
+        self._continuous = True
 
 
     def convertToLocal(self, controlpoints: List[List[float]]) -> List[List[float]]:
         a = torch.tensor(controlpoints).to(self._device)
-        #a = transforms.transform_points(, transforms.toMat4x4(utilsmath.getYawTransform(-np.pi, self._device)))
+        a = transforms.transform_points(a, transforms.toMat4x4(utilsmath.getYawTransform(-np.pi, self._device)))
         a = transforms.transform_points(a, self._world)
         #a[:, 0] *= -1.0
         #
         return a.tolist()
+
+
+    def setContinuous(self, continuous: bool) -> None:
+        self._continuous = continuous
 
 
     def sampleRotation(self) -> torch.tensor:
@@ -144,8 +150,10 @@ class Curve(Transformable):
         translationMatrix = torch.eye(4, device=self._device)
         random_translation = random.uniform(0, 1)
 
-        translation = self._curve.evaluate_single(Curve.count)
-        Curve.count += 0.01 if Curve.count < 0.99 else 0.0
+        translation = self._curve.evaluate_single(Curve.count if self._continuous else random_translation)
+        
+        if self._continuous:
+            Curve.count += 0.01 if Curve.count < 0.99 else 0.0
 
         translationMatrix[0, 3] = translation[0]
         translationMatrix[1, 3] = translation[1]
@@ -154,6 +162,7 @@ class Curve(Transformable):
 
     def randomize(self) -> None:
         self._randomized_world = self.sampleTranslation() @ self.sampleRotation() @ self._world
+        pass
 
 
 class Mesh(Transformable):
@@ -180,7 +189,7 @@ class Mesh(Transformable):
         return self._animated
 
     def convertToLocal(self, vertices: torch.tensor) -> List[List[float]]:
-        #vertices = transforms.transform_points(vertices, transforms.toMat4x4(utilsmath.getRollTransform(-np.pi, self._device)))
+        #vertices = transforms.transform_points(vertices, transforms.toMat4x4(utilsmath.getYawTransform(np.pi, self._device)))
         #vertices = transforms.transform_points(vertices, self._world)
         #a[:, 0] *= -1.0
         #
@@ -191,24 +200,6 @@ class Mesh(Transformable):
         self._vertices = torch.tensor(vertices, device=self._device).reshape(-1, 3)
         self._vertices = self.convertToLocal(self._vertices)
 
-
-        # self._vertices = self._vertices[:, [0, 1, 2]]
-        #self._vertices = self._vertices[:, [0, 2, 1]]
-        #self._vertices = self._vertices[:, [1, 2, 0]]
-        #self._vertices = self._vertices[:, [1, 0, 2]]
-        #self._vertices = self._vertices[:, [2, 0, 1]]
-        #self._vertices = self._vertices[:, [2, 1, 0]]
-
-
-
-        #self._vertices[:, 0] *= -1.0
-        #self._vertices[:, 1] *= -1.0
-        #self._vertices[:, 2] *= -1.0
-
-        #Closest yet:
-        #self._vertices = self._vertices[:, [1, 0, 2]]
-        #self._vertices[:, 1] *= -1.0
-        #self._vertices[:, 0] *= -1.0
     
     def setScaleBoundaries(self, scale: dict) -> None:
         self.min_scale = torch.tensor([scale["min_x"], scale["min_y"], scale["min_z"]], device=self._device)
