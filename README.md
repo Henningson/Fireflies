@@ -1,5 +1,5 @@
 # Fireflies
-We present **Fireflies**, a library for the domain-specific optimization and generation of laser-based structured light pattern.
+**Fireflies** is a tool for the domain-specific optimization and generation of laser-based structured light pattern.
 This repository accompanies the paper **Fireflies: Laser-based Single Shot Structured Light a la Carte**.
 This is a joint work of the <a href="https://www.lgdv.tf.fau.de/">Chair of Visual Computing</a> of the Friedrich-Alexander University of Erlangen-Nuremberg and the <a href="https://www.hno-klinik.uk-erlangen.de/phoniatrie/">Phoniatric Division</a> of the University Hospital Erlangen. 
 

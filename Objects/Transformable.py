@@ -114,6 +114,8 @@ class Transformable:
 
 
 class Curve(Transformable):
+    count = 0.0
+
     def __init__(self,
                  name: str,
                  curve: NURBS.Curve,
@@ -126,7 +128,12 @@ class Curve(Transformable):
 
 
     def convertToLocal(self, controlpoints: List[List[float]]) -> List[List[float]]:
-        return transforms.transform_points(torch.tensor(controlpoints).to(self._device), self._world).tolist()
+        a = torch.tensor(controlpoints).to(self._device)
+        #a = transforms.transform_points(, transforms.toMat4x4(utilsmath.getYawTransform(-np.pi, self._device)))
+        a = transforms.transform_points(a, self._world)
+        #a[:, 0] *= -1.0
+        #
+        return a.tolist()
 
 
     def sampleRotation(self) -> torch.tensor:
@@ -137,7 +144,8 @@ class Curve(Transformable):
         translationMatrix = torch.eye(4, device=self._device)
         random_translation = random.uniform(0, 1)
 
-        translation = self._curve.evaluate_single(random_translation)
+        translation = self._curve.evaluate_single(Curve.count)
+        Curve.count += 0.01 if Curve.count < 0.99 else 0.0
 
         translationMatrix[0, 3] = translation[0]
         translationMatrix[1, 3] = translation[1]
@@ -171,10 +179,36 @@ class Mesh(Transformable):
     def animated(self) -> bool:
         return self._animated
 
+    def convertToLocal(self, vertices: torch.tensor) -> List[List[float]]:
+        #vertices = transforms.transform_points(vertices, transforms.toMat4x4(utilsmath.getRollTransform(-np.pi, self._device)))
+        #vertices = transforms.transform_points(vertices, self._world)
+        #a[:, 0] *= -1.0
+        #
+        return vertices
+
 
     def setVertices(self, vertices: List[float]) -> None:
         self._vertices = torch.tensor(vertices, device=self._device).reshape(-1, 3)
+        self._vertices = self.convertToLocal(self._vertices)
 
+
+        # self._vertices = self._vertices[:, [0, 1, 2]]
+        #self._vertices = self._vertices[:, [0, 2, 1]]
+        #self._vertices = self._vertices[:, [1, 2, 0]]
+        #self._vertices = self._vertices[:, [1, 0, 2]]
+        #self._vertices = self._vertices[:, [2, 0, 1]]
+        #self._vertices = self._vertices[:, [2, 1, 0]]
+
+
+
+        #self._vertices[:, 0] *= -1.0
+        #self._vertices[:, 1] *= -1.0
+        #self._vertices[:, 2] *= -1.0
+
+        #Closest yet:
+        #self._vertices = self._vertices[:, [1, 0, 2]]
+        #self._vertices[:, 1] *= -1.0
+        #self._vertices[:, 0] *= -1.0
     
     def setScaleBoundaries(self, scale: dict) -> None:
         self.min_scale = torch.tensor([scale["min_x"], scale["min_y"], scale["min_z"]], device=self._device)
@@ -202,7 +236,7 @@ class Mesh(Transformable):
         temp_vertex = self.sampleAnimation() if self._animated else self._vertices
 
         # Transform by world transform
-        temp_vertex = transforms.transform_points(temp_vertex, self.world())
+        #temp_vertex = transforms.transform_points(temp_vertex, self._randomized_world)
 
         return temp_vertex
     

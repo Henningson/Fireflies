@@ -255,9 +255,8 @@ if __name__ == "__main__":
 
     for i in tqdm(range(100000)):
         firefly_scene.randomize()
-        
         render = mi.render(mitsuba_scene, spp=20)
-        render = torch.clamp(render.torch(), 0, 1).cpu().numpy()
+        render = torch.clamp(render.torch(), 0, 1)[:, :, [2, 1, 0]].cpu().numpy()
         cv2.imshow("Render", render)
         cv2.waitKey(1)
 
