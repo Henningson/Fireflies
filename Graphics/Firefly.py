@@ -232,7 +232,7 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     import cv2
 
-    base_path = "scenes/PlasterTeeth/"
+    base_path = "scenes/OpenGLTest/"
 
     mitsuba_scene = mi.load_file(os.path.join(base_path, "scene.xml"))
     mitsuba_params = mi.traverse(mitsuba_scene)

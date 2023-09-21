@@ -132,14 +132,8 @@ def generate_epipolar_constraints(scene, params, device):
     # to ensure optimization in specific epipolar range.
     epipolar_min = ray_origins
     epipolar_max = ray_origins + 10000 * ray_directions
+    epipolar_points = torch.vstack([epipolar_max, epipolar_min])
 
-    fig = plt.figure()
-    ax = fig.add_subplot(1,1,1)
-    points = #torch.vstack([epipolar_max])[:, 0:2].detach().cpu().numpy()
-    hull = ConvexHull(points)
-    ax.plot(points[:, 0], points[:, 1])
-    convex_hull_plot_2d(hull, ax=ax)
-    plt.show(block=True)
 
     K = utils.build_projection_matrix(params['PerspectiveCamera.x_fov'], params['PerspectiveCamera.near_clip'], params['PerspectiveCamera.far_clip'])
     CAMERA_TO_WORLD = params["PerspectiveCamera.to_world"].matrix.torch()
@@ -148,13 +142,17 @@ def generate_epipolar_constraints(scene, params, device):
     # Project points into NDC
     CAMERA_TO_WORLD = CAMERA_TO_WORLD.inverse()
 
-    epipolar_max = transforms.transform_points(epipolar_max, CAMERA_TO_WORLD)
-    epipolar_max = transforms.transform_points(epipolar_max, K)
-    epipolar_max = transforms.convert_points_from_homogeneous(epipolar_max)[0]
+    epipolar_points = transforms.transform_points(epipolar_points, CAMERA_TO_WORLD)
+    epipolar_points = transforms.transform_points(epipolar_points, K)
+    epipolar_points = transforms.convert_points_from_homogeneous(epipolar_points)[0]
 
-    epipolar_min = transforms.transform_points(epipolar_min, CAMERA_TO_WORLD)
-    epipolar_min = transforms.transform_points(epipolar_min, K)
-    epipolar_min = transforms.convert_points_from_homogeneous(epipolar_min)[0]
+    epi_points_np = epipolar_points.detach().cpu().numpy()
+    # fig = plt.figure()
+    # ax = fig.add_subplot(1,1,1)
+    hull = ConvexHull(epi_points_np)
+    # ax.plot(epi_points_np[:, 0], epi_points_np[:, 1])
+    # convex_hull_plot_2d(hull, ax=ax)
+    # plt.show(block=True)
 
 
     # We could also calculate the fundamental matrix 
@@ -164,18 +162,19 @@ def generate_epipolar_constraints(scene, params, device):
     # Replace this point by the epipolar minimum
     # This gives us the convex hull of the epipolar constraints
     # In clockwise order
-    closest_index = (epipolar_max - epipolar_min).norm(dim=1).argmin()
-    epipolar_max[closest_index] = epipolar_min[0]
-
-    camera_size = torch.tensor(camera_sensor.film().crop_size(), device=device)
-
-    epipolar_max = (epipolar_max + 1.0) * 0.5
-    epipolar_max *= camera_size[None, ...]
+    
+    camera_size = np.array(camera_sensor.film().crop_size())
+    epi_points_np = epi_points_np[hull.vertices]
+    epi_points_np = (epi_points_np + 1.0) * 0.5
+    epi_points_np *= camera_size[None, ...]
 
 
-    image = np.zeros(camera_size.cpu().numpy(), dtype=np.uint8)
-    image = cv2.fillPoly(image, pts=[epipolar_max.cpu().numpy().astype(int)], color=1)
-    image = cv2.flip(image, 0)
+    image = np.zeros(camera_size, dtype=np.uint8)
+    image = cv2.fillPoly(image, pts=[epi_points_np.astype(int)], color=1)
+    #image = cv2.flip(image, 0)
+
+    cv2.imshow("Epipolar Image", image*255)
+    cv2.waitKey(0)
     
     return torch.from_numpy(image).to(device)
 

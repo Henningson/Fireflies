@@ -85,8 +85,8 @@ class Transformable:
         random_translation = utils.randomBetweenTensors(self.min_translation, self.max_translation)
 
         translationMatrix[0, 3] = random_translation[0]
-        translationMatrix[1, 3] = random_translation[1]
-        translationMatrix[2, 3] = random_translation[2]
+        translationMatrix[1, 3] = -random_translation[2]
+        translationMatrix[2, 3] = random_translation[1]
         self._last_translation = translationMatrix
         return translationMatrix
 
@@ -134,7 +134,7 @@ class Curve(Transformable):
 
     def convertToLocal(self, controlpoints: List[List[float]]) -> List[List[float]]:
         a = torch.tensor(controlpoints).to(self._device)
-        a = transforms.transform_points(a, transforms.toMat4x4(utilsmath.getYTransform(np.pi, self._device)))
+        #a = transforms.transform_points(a, transforms.toMat4x4(utilsmath.getXTransform(np.pi, self._device)))
         a = transforms.transform_points(a, self._world.inverse())
         #a[:, 0] *= -1.0
         #
@@ -192,8 +192,8 @@ class Mesh(Transformable):
         return self._animated
 
     def convertToLocal(self, vertices: torch.tensor) -> List[List[float]]:
-        vertices = transforms.transform_points(vertices, transforms.toMat4x4(utilsmath.getXTransform(np.pi*0.5, self._device)))
-        vertices = transforms.transform_points(vertices, self._world)
+        #vertices = transforms.transform_points(vertices, transforms.toMat4x4(utilsmath.getXTransform(np.pi*0.5, self._device)))
+        #vertices = transforms.transform_points(vertices, self._world)
         #a[:, 0] *= -1.0
         #
         return vertices
