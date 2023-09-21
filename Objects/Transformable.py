@@ -126,13 +126,16 @@ class Curve(Transformable):
         
         self._curve = curve
         self._curve.ctrlpts = self.convertToLocal(self._curve.ctrlpts)
+
         self._continuous = True
+        self._interp_steps = 300
+        self._interp_delta = 1.0 / self._interp_steps
 
 
     def convertToLocal(self, controlpoints: List[List[float]]) -> List[List[float]]:
         a = torch.tensor(controlpoints).to(self._device)
-        a = transforms.transform_points(a, transforms.toMat4x4(utilsmath.getYawTransform(-np.pi, self._device)))
-        a = transforms.transform_points(a, self._world)
+        a = transforms.transform_points(a, transforms.toMat4x4(utilsmath.getYTransform(np.pi, self._device)))
+        a = transforms.transform_points(a, self._world.inverse())
         #a[:, 0] *= -1.0
         #
         return a.tolist()
@@ -151,9 +154,9 @@ class Curve(Transformable):
         random_translation = random.uniform(0, 1)
 
         translation = self._curve.evaluate_single(Curve.count if self._continuous else random_translation)
-        
+
         if self._continuous:
-            Curve.count += 0.01 if Curve.count < 0.99 else 0.0
+            Curve.count += self._interp_delta if Curve.count < 1.0 else 0.0
 
         translationMatrix[0, 3] = translation[0]
         translationMatrix[1, 3] = translation[1]
@@ -189,8 +192,8 @@ class Mesh(Transformable):
         return self._animated
 
     def convertToLocal(self, vertices: torch.tensor) -> List[List[float]]:
-        #vertices = transforms.transform_points(vertices, transforms.toMat4x4(utilsmath.getYawTransform(np.pi, self._device)))
-        #vertices = transforms.transform_points(vertices, self._world)
+        vertices = transforms.transform_points(vertices, transforms.toMat4x4(utilsmath.getXTransform(np.pi*0.5, self._device)))
+        vertices = transforms.transform_points(vertices, self._world)
         #a[:, 0] *= -1.0
         #
         return vertices

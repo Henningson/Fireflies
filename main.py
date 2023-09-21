@@ -70,14 +70,15 @@ def main():
     global_params.update()
     global_key = "tex.data"
 
-    import matplotlib.pyplot as plt
-    testrender = mi.render(global_scene)
+    # import matplotlib.pyplot as plt
+    # testrender = mi.render(global_scene)
 
-    plt.axis("off")
-    plt.imshow(testrender ** (1.0 / 2.2));
-    plt.show()
+    # plt.axis("off")
+    # plt.imshow(testrender ** (1.0 / 2.2));
+    # plt.show()
 
     constraint_map = LaserEstimation.generate_epipolar_constraints(global_scene, global_params, DEVICE)
+    
     firefly_scene = Firefly.Scene(global_params, 
                                   args.scene_path, 
                                   sequential_animation=config.sequential, 
@@ -89,7 +90,12 @@ def main():
 
     # Given depth maps, generate probability distribution
     variance_map = LaserEstimation.probability_distribution_from_depth_maps(depth_maps, config.variational_epsilon)
-    
+    vm = (variance_map.cpu().numpy()*255).astype(np.uint8)
+    vm = cv2.applyColorMap(vm, cv2.COLORMAP_VIRIDIS)
+    cv2.imshow("Variance Map", vm)
+    cv2.waitKey(0)
+
+
     # Final multiplication and normalization
     final_sampling_map = variance_map * constraint_map
     final_sampling_map /= final_sampling_map.sum()

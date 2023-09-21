@@ -121,9 +121,9 @@ def generate_epipolar_constraints(scene, params, device):
 
 
 
-    _, ray_directions = create_rays(projector_sensor, proj_frame_bounds)
-    ray_origins = projector_sensor.world_transform().matrix.torch().squeeze()[0:3, 3]
-    ray_origins = ray_origins.unsqueeze(0).repeat(ray_directions.shape[0], 1)
+    ray_origins, ray_directions = create_rays(projector_sensor, proj_frame_bounds)
+    #ray_origins = projector_sensor.world_transform().matrix.torch().squeeze()[0:3, 3]
+    #ray_origins = ray_origins.unsqueeze(0).repeat(ray_directions.shape[0], 1)
     #ray_origins = torch.tensor(ray_origins, device=device)
     #ray_directions = torch.tensor(ray_directions, device=device)
 
@@ -133,13 +133,13 @@ def generate_epipolar_constraints(scene, params, device):
     epipolar_min = ray_origins
     epipolar_max = ray_origins + 10000 * ray_directions
 
-    #fig = plt.figure()
-    #ax = fig.add_subplot(1,1,1)
-    points = torch.vstack([epipolar_min[0:1], epipolar_max])[:, 0:2].detach().cpu().numpy()
-    #hull = ConvexHull(points)
-    #ax.plot(points[:, 0], points[:, 1])
-    #convex_hull_plot_2d(hull, ax=ax)
-    #plt.show(block=True)
+    fig = plt.figure()
+    ax = fig.add_subplot(1,1,1)
+    points = #torch.vstack([epipolar_max])[:, 0:2].detach().cpu().numpy()
+    hull = ConvexHull(points)
+    ax.plot(points[:, 0], points[:, 1])
+    convex_hull_plot_2d(hull, ax=ax)
+    plt.show(block=True)
 
     K = utils.build_projection_matrix(params['PerspectiveCamera.x_fov'], params['PerspectiveCamera.near_clip'], params['PerspectiveCamera.far_clip'])
     CAMERA_TO_WORLD = params["PerspectiveCamera.to_world"].matrix.torch()

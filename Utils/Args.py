@@ -21,7 +21,7 @@ class GlobalArgumentParser(argparse.ArgumentParser):
                 epilog = 'Arguments can be used to overwrite values in a config file.'):
         argparse.ArgumentParser.__init__(self, prog, description, epilog)
                     
-        self.add_argument("--scene_path", type=str, default="scenes/RotObject")
+        self.add_argument("--scene_path", type=str)
 
         self.add_argument("--n_depthmaps", type=int, help="The number of depth maps to generate. Should rise with the complexity of the scene")
         self.add_argument("--variational_epsilon", type=float, help="Add this as a constant value to the initial sampling map to also sample from positions that do not vary in depth.")

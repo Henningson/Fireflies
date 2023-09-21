@@ -44,11 +44,11 @@ class Laser(Camera.Camera):
 
     
     def origin(self) -> torch.tensor:
-        return self._transformable.origin()
+        return self._transformable.world()
 
 
     def originPerRay(self) -> torch.tensor:
-        return self._transformable.origin()[0:3, 3].unsqueeze(0).repeat(self._rays.shape[0], 1)
+        return self._transformable.world()[0:3, 3].unsqueeze(0).repeat(self._rays.shape[0], 1)
 
 
     def near_clip(self) -> float:

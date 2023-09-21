@@ -3,6 +3,7 @@ import mitsuba as mi
 mi.set_variant("cuda_ad_rgb")
 import drjit as dr
 import Graphics.LaserEstimation as LaserEstimation
+import cv2
 
 from tqdm import tqdm
 
@@ -118,14 +119,22 @@ def from_camera(scene, spp=64):
     return result
 
 
-def random_depth_maps(firefly_scene, mi_scene, num_maps: int = 100, spp: int = 10) -> torch.tensor:
+def random_depth_maps(firefly_scene, mi_scene, num_maps: int = 100, spp: int = 1) -> torch.tensor:
     stacked_depth_maps = []
     im_size = mi_scene.sensors()[0].film().size()
+
 
     for i in tqdm(range(num_maps)):
         firefly_scene.randomize()
 
-        depth_map = from_camera_non_wrapped(mi_scene, spp=spp)
+        depth_map = from_camera_non_wrapped(mi_scene, spp=1)
+
+        vis_depth = depth_map.torch().reshape(im_size[0], im_size[1])
+        vis_depth /= vis_depth.max()
+        cv2.imshow("Depth", vis_depth.detach().cpu().numpy())
+        cv2.waitKey(1)
+
+
         depth_map = depth_map.torch().reshape(im_size[0], im_size[1], spp).mean(dim=-1)
         stacked_depth_maps.append(depth_map)
 

@@ -5,6 +5,18 @@ import math
 def uniformBetweenValues(a: float, b: float):
     return random.uniform(a, b)
 
+
+def getZTransform(alpha: float, _device: torch.cuda.device) -> torch.tensor:
+    return getYawTransform(alpha, _device)
+
+def getYTransform(alpha: float, _device: torch.cuda.device) -> torch.tensor:
+    return getPitchTransform(alpha, _device)
+
+def getXTransform(alpha: float, _device: torch.cuda.device) -> torch.tensor:
+    return getRollTransform(alpha, _device)
+
+
+
 def getYawTransform(alpha: float, _device: torch.cuda.device) -> torch.tensor:
     rotZ = torch.tensor([[math.cos(alpha), -math.sin(alpha), 0],
                          [math.sin(alpha),  math.cos(alpha), 0],
