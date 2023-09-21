@@ -103,7 +103,9 @@ class Transformable:
     def world(self) -> torch.tensor:
         # If no parent exists, just return the current translation
         if self._parent is None:
-            return self._randomized_world
+            temp = self._randomized_world.clone()
+            temp[0:3, 0:3] = temp[0:3, 0:3] @ utilsmath.getYTransform(np.pi, self._device)
+            return temp
         
         return self._parent.world() @ self._randomized_world
 
@@ -153,10 +155,16 @@ class Curve(Transformable):
         translationMatrix = torch.eye(4, device=self._device)
         random_translation = random.uniform(0, 1)
 
-        translation = self._curve.evaluate_single(Curve.count if self._continuous else random_translation)
-
         if self._continuous:
-            Curve.count += self._interp_delta if Curve.count < 1.0 else 0.0
+            Curve.count += self._interp_delta
+            if Curve.count > 1.0:
+                Curve.count = 0.0
+
+            random_translation = Curve.count
+
+        translation = self._curve.evaluate_single(random_translation)
+
+        
 
         translationMatrix[0, 3] = translation[0]
         translationMatrix[1, 3] = translation[1]

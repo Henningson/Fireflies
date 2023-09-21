@@ -171,7 +171,7 @@ class Scene:
 
         # Couldn't find a better way to get this torch tensor into mitsuba Transform4f
         worldMatrix = self.camera.world()
-        worldMatrix[0:3, 0:3] = worldMatrix[0:3, 0:3] @ math.getYTransform(np.pi, self._device)
+        #worldMatrix[0:3, 0:3] = worldMatrix[0:3, 0:3] 
         self.scene_params[key + ".to_world"] = mi.Transform4f(worldMatrix.tolist())
 
 
@@ -182,7 +182,7 @@ class Scene:
         # TODO: Remove key
         key = "Projector"
         worldMatrix = self.projector.world()
-        worldMatrix[0:3, 0:3] = worldMatrix[0:3, 0:3] @ math.getYTransform(np.pi, self._device)
+        #worldMatrix[0:3, 0:3] = worldMatrix[0:3, 0:3] @ math.getYTransform(np.pi, self._device)
 
         # TODO: Is there a better way here?
         # Couldn't find a better way to get this torch tensor into mitsuba Transform4f

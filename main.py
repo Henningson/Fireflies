@@ -78,7 +78,7 @@ def main():
     # plt.show()
 
     constraint_map = LaserEstimation.generate_epipolar_constraints(global_scene, global_params, DEVICE)
-    
+
     firefly_scene = Firefly.Scene(global_params, 
                                   args.scene_path, 
                                   sequential_animation=config.sequential, 
@@ -125,7 +125,7 @@ def main():
 
     # Sample directions of laser beams from variance map
     laser_dir = LaserEstimation.laser_from_ndc_points(global_scene.sensors()[0],
-                            laser_origin,
+                            firefly_scene.projector.world().inverse(),
                             depth_maps,
                             chosen_points,
                             device=DEVICE)
@@ -176,6 +176,9 @@ def main():
         points = Laser.projectRaysToNDC()[:, 0:2]
         texture_init = rasterization.rasterize_points(points, sigma, tex_size)
         texture_init = rasterization.softor(texture_init)
+
+        cv2.imshow("Tex", texture_init.detach().cpu().numpy())
+        cv2.waitKey(0)
 
         hitpoints = cast_laser(Laser.originPerRay(), Laser.rays())
         world_points = Laser.originPerRay() + hitpoints * Laser.rays()
