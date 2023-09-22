@@ -20,6 +20,7 @@ import Graphics.depth as depth
 import Utils.transforms as transforms
 import Objects.laser as laser
 import Models.GatedUNet as GatedUNet
+import Models.UNet as UNet
 import Graphics.rasterization as rasterization
 import Metrics.Losses as Losses
 import Utils.ConfigArgsParser as CAP
@@ -93,7 +94,7 @@ def main():
     vm = (variance_map.cpu().numpy()*255).astype(np.uint8)
     vm = cv2.applyColorMap(vm, cv2.COLORMAP_VIRIDIS)
     cv2.imshow("Variance Map", vm)
-    cv2.waitKey(0)
+    cv2.waitKey(1)
 
 
     # Final multiplication and normalization
@@ -123,9 +124,10 @@ def main():
     # TODO: Can we find a better way to get this fov?
     fov = global_params['PerspectiveCamera_1.x_fov']
 
+    laser_origin = firefly_scene.projector.world()[0:3, 3]
     # Sample directions of laser beams from variance map
     laser_dir = LaserEstimation.laser_from_ndc_points(global_scene.sensors()[0],
-                            firefly_scene.projector.world().inverse(),
+                            laser_origin,
                             depth_maps,
                             chosen_points,
                             device=DEVICE)
@@ -141,7 +143,7 @@ def main():
         'in_channels': config.n_beams + 3, 
         'out_channels': 1, 
         'features': [32, 64, 128, 256, 512]}
-    model = GatedUNet.Model(config=UNET_CONFIG, device=DEVICE).to(DEVICE)
+    model = UNet.Model(config=UNET_CONFIG, device=DEVICE).to(DEVICE)
     model.train()
     
     losses = Losses.Handler([
@@ -169,7 +171,10 @@ def main():
         #    upsampling_step += 1
         #    global_params.update()
 
+        if i == 67:
+            kdaopsdkpoa = 1
 
+            
         optim.zero_grad()
         firefly_scene.randomize()
 
@@ -178,7 +183,7 @@ def main():
         texture_init = rasterization.softor(texture_init)
 
         cv2.imshow("Tex", texture_init.detach().cpu().numpy())
-        cv2.waitKey(0)
+        cv2.waitKey(1)
 
         hitpoints = cast_laser(Laser.originPerRay(), Laser.rays())
         world_points = Laser.originPerRay() + hitpoints * Laser.rays()

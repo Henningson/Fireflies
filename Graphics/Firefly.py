@@ -171,6 +171,7 @@ class Scene:
 
         # Couldn't find a better way to get this torch tensor into mitsuba Transform4f
         worldMatrix = self.camera.world()
+        worldMatrix[0:3, 0:3] = worldMatrix[0:3, 0:3] @ math.getYTransform(np.pi, self._device)
         #worldMatrix[0:3, 0:3] = worldMatrix[0:3, 0:3] 
         self.scene_params[key + ".to_world"] = mi.Transform4f(worldMatrix.tolist())
 
@@ -182,7 +183,7 @@ class Scene:
         # TODO: Remove key
         key = "Projector"
         worldMatrix = self.projector.world()
-        #worldMatrix[0:3, 0:3] = worldMatrix[0:3, 0:3] @ math.getYTransform(np.pi, self._device)
+        worldMatrix[0:3, 0:3] = worldMatrix[0:3, 0:3] @ math.getYTransform(np.pi, self._device)
 
         # TODO: Is there a better way here?
         # Couldn't find a better way to get this torch tensor into mitsuba Transform4f
@@ -232,11 +233,11 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     import cv2
 
-    base_path = "scenes/OpenGLTest/"
+    base_path = "scenes/OpenGLTest3/"
 
     mitsuba_scene = mi.load_file(os.path.join(base_path, "scene.xml"))
     mitsuba_params = mi.traverse(mitsuba_scene)
-    mitsuba_params["PerspectiveCamera.film.size"] = [1080//2, 1080//2]
+    #mitsuba_params["PerspectiveCamera.film.size"] = [1080//2, 1080//2]
     mitsuba_params['Projector.to_world'] = mitsuba_params['PerspectiveCamera_1.to_world']
     print(mitsuba_params['PerspectiveCamera_1.to_world'])
 

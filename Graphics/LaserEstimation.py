@@ -174,7 +174,7 @@ def generate_epipolar_constraints(scene, params, device):
     #image = cv2.flip(image, 0)
 
     cv2.imshow("Epipolar Image", image*255)
-    cv2.waitKey(0)
+    cv2.waitKey(1)
     
     return torch.from_numpy(image).to(device)
 

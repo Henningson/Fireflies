@@ -104,7 +104,7 @@ class Transformable:
         # If no parent exists, just return the current translation
         if self._parent is None:
             temp = self._randomized_world.clone()
-            temp[0:3, 0:3] = temp[0:3, 0:3] @ utilsmath.getYTransform(np.pi, self._device)
+            #temp[0:3, 0:3] = temp[0:3, 0:3] @ utilsmath.getYTransform(np.pi, self._device)
             return temp
         
         return self._parent.world() @ self._randomized_world
@@ -200,7 +200,7 @@ class Mesh(Transformable):
         return self._animated
 
     def convertToLocal(self, vertices: torch.tensor) -> List[List[float]]:
-        #vertices = transforms.transform_points(vertices, transforms.toMat4x4(utilsmath.getXTransform(np.pi*0.5, self._device)))
+        vertices = transforms.transform_points(vertices, transforms.toMat4x4(utilsmath.getXTransform(np.pi*0.5, self._device)))
         #vertices = transforms.transform_points(vertices, self._world)
         #a[:, 0] *= -1.0
         #
@@ -238,7 +238,11 @@ class Mesh(Transformable):
         temp_vertex = self.sampleAnimation() if self._animated else self._vertices
 
         # Transform by world transform
-        #temp_vertex = transforms.transform_points(temp_vertex, self._randomized_world)
+        temp_vertex = transforms.transform_points(temp_vertex, self.world())
+        
+        # parent = self._parent
+        # while parent:
+        #     temp_vertex = transforms.transform_points(temp_vertex, parent.world())
 
         return temp_vertex
     
