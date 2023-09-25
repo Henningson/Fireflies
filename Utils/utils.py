@@ -73,7 +73,7 @@ def build_projection_matrix(fov: float, near_clip: float, far_clip: float, devic
     if not torch.is_tensor(fov):
         fov = torch.tensor(fov, device=device)
 
-    tanHalfFov = torch.tan((fov / 2))
+    tanHalfFov = torch.tan((fov / 2.0))
     max_y = tanHalfFov * near_clip
     min_y = -max_y
     max_x = max_y * 1.0

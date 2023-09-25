@@ -6,6 +6,7 @@ import Objects.intersections as intersections
 import torch
 import Utils.transforms as transforms
 import Utils.utils as utils
+import Utils.math as math
 from scipy.spatial import ConvexHull, convex_hull_plot_2d
 import numpy as np
 import matplotlib.pyplot as plt
@@ -106,7 +107,7 @@ def generate_epipolar_constraints(scene, params, device):
     camera_sensor = scene.sensors()[0]
 
     projector_sensor = scene.sensors()[1]
-    proj_ywidth, proj_xwidth = projector_sensor.film().size()
+    proj_xwidth, proj_ywidth = projector_sensor.film().size()
     
     # These values correspond to a flattened array.
     # Upper-Left
@@ -114,45 +115,54 @@ def generate_epipolar_constraints(scene, params, device):
     # Lower-Right
     # Lower-Left
     proj_frame_bounds = torch.tensor([0,
-                                proj_xwidth - 1,
-                                proj_ywidth*proj_xwidth - 1,
+                                proj_xwidth,
+                                proj_ywidth*proj_xwidth,
                                 proj_ywidth*proj_xwidth - proj_xwidth],
                                 device=device)
 
-
-
     ray_origins, ray_directions = create_rays(projector_sensor, proj_frame_bounds)
-    #ray_origins = projector_sensor.world_transform().matrix.torch().squeeze()[0:3, 3]
-    #ray_origins = ray_origins.unsqueeze(0).repeat(ray_directions.shape[0], 1)
-    #ray_origins = torch.tensor(ray_origins, device=device)
-    #ray_directions = torch.tensor(ray_directions, device=device)
 
+    near_clip = params['PerspectiveCamera_1.near_clip']
+    far_clip = params['PerspectiveCamera_1.far_clip']
+    steps = 5
+    delta = (far_clip - near_clip / steps)
 
-    # TODO: Inlcude projector near and far clip here,
-    # to ensure optimization in specific epipolar range.
-    epipolar_min = ray_origins
-    epipolar_max = ray_origins + 10000 * ray_directions
-    epipolar_points = torch.vstack([epipolar_max, epipolar_min])
-
+    projection_points = [ray_origins + (params['PerspectiveCamera_1.near_clip'] + delta*i) * ray_directions for i in range(steps)]
+    projection_points = torch.vstack(projection_points)
+    epipolar_points   = projection_points
 
     K = utils.build_projection_matrix(params['PerspectiveCamera.x_fov'], params['PerspectiveCamera.near_clip'], params['PerspectiveCamera.far_clip'])
-    CAMERA_TO_WORLD = params["PerspectiveCamera.to_world"].matrix.torch()
-    
-    
-    # Project points into NDC
-    CAMERA_TO_WORLD = CAMERA_TO_WORLD.inverse()
+    CAMERA_TO_WORLD = params["PerspectiveCamera.to_world"].matrix.torch()[0]
+    CAMERA_TO_WORLD[0:3, 0:3] = CAMERA_TO_WORLD[0:3, 0:3] @ math.getYTransform(-np.pi, device)
 
-    epipolar_points = transforms.transform_points(epipolar_points, CAMERA_TO_WORLD)
-    epipolar_points = transforms.transform_points(epipolar_points, K)
-    epipolar_points = transforms.convert_points_from_homogeneous(epipolar_points)[0]
+    epipolar_points = transforms.transform_points(epipolar_points, CAMERA_TO_WORLD.inverse())
+    epipolar_points = transforms.transform_points(epipolar_points, K)[:, 0:2]
+    #epipolar_points = transforms.convert_points_from_homogeneous(epipolar_points)
 
     epi_points_np = epipolar_points.detach().cpu().numpy()
-    # fig = plt.figure()
-    # ax = fig.add_subplot(1,1,1)
+
+    ##
+    #
+    #
+    # TEST
+    #
+    ##
+
+
+    #camera_size = np.array(camera_sensor.film().crop_size()) # X,Y
+
+
+
+    #fig = plt.figure()
+    #ax = fig.add_subplot(1,1,1)
     hull = ConvexHull(epi_points_np)
-    # ax.plot(epi_points_np[:, 0], epi_points_np[:, 1])
-    # convex_hull_plot_2d(hull, ax=ax)
-    # plt.show(block=True)
+    #line_segments = [hull.points[simplex] for simplex in hull.simplices]
+    #line_segments = np.vstack(line_segments)
+    #line_segments = line_segments[::2, :]
+    line_segments = epipolar_points[hull.vertices]
+    #ax.scatter(hull.vertices[:, 0], hull.vertices[:, 1])
+    #convex_hull_plot_2d(hull, ax=ax)
+    #plt.show(block=True)
 
 
     # We could also calculate the fundamental matrix 
@@ -164,17 +174,22 @@ def generate_epipolar_constraints(scene, params, device):
     # In clockwise order
     
     camera_size = np.array(camera_sensor.film().crop_size())
-    epi_points_np = epi_points_np[hull.vertices]
+    #camera_size = camera_size[[1, 0]] # swap image size to Y,X
+    
+    epi_points_np = line_segments.cpu().numpy()
+    #epi_points_np[:, 0] *= 1.5
     epi_points_np = (epi_points_np + 1.0) * 0.5
-    epi_points_np *= camera_size[None, ...]
+    epi_points_np = epi_points_np[:, [1, 0]]
+    epi_points_np *= camera_size
 
 
-    image = np.zeros(camera_size, dtype=np.uint8)
-    image = cv2.fillPoly(image, pts=[epi_points_np.astype(int)], color=1)
+    image = np.zeros(camera_size[[1, 0]], dtype=np.uint8)
+    image = cv2.fillPoly(image, [epi_points_np.astype(int)], color=1)
+    #image = cv2.fillPoly(image, pts=[epi_points_np.astype(int)[:, [1, 0]]], color=1)
     #image = cv2.flip(image, 0)
 
     cv2.imshow("Epipolar Image", image*255)
-    cv2.waitKey(1)
+    cv2.waitKey(0)
     
     return torch.from_numpy(image).to(device)
 

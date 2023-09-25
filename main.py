@@ -71,20 +71,16 @@ def main():
     global_params.update()
     global_key = "tex.data"
 
-    # import matplotlib.pyplot as plt
-    # testrender = mi.render(global_scene)
-
-    # plt.axis("off")
-    # plt.imshow(testrender ** (1.0 / 2.2));
-    # plt.show()
-
-    constraint_map = LaserEstimation.generate_epipolar_constraints(global_scene, global_params, DEVICE)
 
     firefly_scene = Firefly.Scene(global_params, 
                                   args.scene_path, 
                                   sequential_animation=config.sequential, 
                                   steps_per_frame=config.steps_per_anim,
                                   device=DEVICE)
+    firefly_scene.randomize()
+
+    constraint_map = LaserEstimation.generate_epipolar_constraints(global_scene, global_params, DEVICE)
+
 
     # Generate random depth maps by uniformly sampling from scene parameter ranges
     depth_maps = depth.random_depth_maps(firefly_scene, global_scene, num_maps=config.n_depthmaps)
