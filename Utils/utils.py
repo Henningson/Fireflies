@@ -85,7 +85,7 @@ def build_projection_matrix(fov: float, near_clip: float, far_clip: float, devic
     # in the projection matrix is set to -1.0.
     # In pytorch3d we maintain a right handed coordinate system throughout
     # so the so the z sign is 1.0.
-    z_sign = 1.0
+    z_sign = -1.0
 
     # pyre-fixme[58]: `/` is not supported for operand types `float` and `Tensor`.
     K[0, 0] = 2.0 * near_clip / (max_x - min_x)

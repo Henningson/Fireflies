@@ -8,7 +8,8 @@ import os
 import pywavefront
 import numpy as np
 from geomdl import NURBS
-
+import Objects.flame_pytorch.flame as flame
+from argparse import Namespace
 
 class Transformable:
     def __init__(self,
@@ -244,7 +245,7 @@ class Mesh(Transformable):
         # while parent:
         #     temp_vertex = transforms.transform_points(temp_vertex, parent.world())
 
-        return temp_vertex
+        return temp_vertex, None
     
 
     def loadAnimation(self, base_path, obj_name):
@@ -277,3 +278,88 @@ class Mesh(Transformable):
             index = random.randint(0, num_anim_frames - 1)
 
         return self._vertex_offsets[index]
+    
+
+
+class FlameShapeModel(Mesh):
+    def __init__(self,
+                 name: str,
+                 vertex_data: List[float],
+                 config: dict, 
+                 device: torch.cuda.device = torch.device("cuda"),
+                 base_path: str = None,
+                 sequential_animation: bool = False):
+        
+        self._device = device
+        self._name = name
+
+        self.setTranslationBoundaries(config["translation"])
+        self.setRotationBoundaries(config["rotation"])
+        self.setWorld(config['to_world'])
+        self._world = self._world @ transforms.toMat4x4(utilsmath.getXTransform(np.pi*0.5, self._device))
+        self._randomized_world = self._world.clone()
+
+        self._randomizable = bool(config["randomizable"])
+        self._relative = bool(config["is_relative"])
+
+        self._parent_name = config["parent_name"] if self._relative else None
+        # Is loaded in a second step
+        self._parent = None
+        self._child = None
+
+
+        self.setVertices(vertex_data)
+        self.setScaleBoundaries(config["scale"])
+        self._animated = bool(config["animated"])
+        self._sequential_animation = sequential_animation
+
+        self._animation_index = 0
+
+        flame_config = Namespace(**{
+                'batch_size': 1, 
+                'dynamic_landmark_embedding_path': './Objects/flame_pytorch/model/flame_dynamic_embedding.npy', 
+                'expression_params': 50, 
+                'flame_model_path': './Objects/flame_pytorch/model/generic_model.pkl', 
+                'num_worker': 4, 
+                'optimize_eyeballpose': True, 
+                'optimize_neckpose': True, 
+                'pose_params': 6, 
+                'ring_loss_weight': 1.0, 
+                'ring_margin': 0.5, 
+                'shape_params': 100, 
+                'static_landmark_embedding_path': './Objects/flame_pytorch/model/flame_static_embedding.pkl', 
+                'use_3D_translation': True, 
+                'use_face_contour': True
+            })
+
+
+        self.setVertices(vertex_data)
+        self.setScaleBoundaries(config["scale"])
+        self._stddev_range = config["stddev_range"]
+        self._flame_layer = flame.FLAME(flame_config).to(self._device)
+
+
+    def loadAnimation(self):
+        return None
+    
+    def getVertexData(self):
+        if not self._animated:
+            return self._vertices, self._flame_layer.faces
+
+
+        shape_params = (torch.rand(1, 100, device=self._device) - 0.5) * 2.0 * self._stddev_range
+        pose_params = torch.zeros(1, 6, device=self._device)
+        expression_params = (torch.rand(1, 50, device=self._device) - 0.5) * 2.0 * self._stddev_range
+
+        vertices, _ = self._flame_layer(shape_params, expression_params, pose_params)
+        vertices = vertices[0]
+
+
+        vertices = transforms.transform_points(vertices, self.world() @ transforms.toMat4x4(utilsmath.getXTransform(np.pi*0.5, self._device)))
+
+        return vertices, self._flame_layer.faces
+    
+
+
+if __name__ == '__main__':
+    fsm = FlameShapeModel('Bla', )

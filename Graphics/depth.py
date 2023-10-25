@@ -129,7 +129,7 @@ def random_depth_maps(firefly_scene, mi_scene, num_maps: int = 100, spp: int = 1
 
         depth_map = from_camera_non_wrapped(mi_scene, spp=1)
 
-        vis_depth = depth_map.torch().reshape(im_size[1], im_size[0])
+        vis_depth = depth_map.torch().reshape(im_size[1], im_size[0]).clone()
         vis_depth /= vis_depth.max()
         cv2.imshow("Depth", vis_depth.detach().cpu().numpy())
         cv2.waitKey(1)

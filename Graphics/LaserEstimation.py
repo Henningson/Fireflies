@@ -32,15 +32,67 @@ def points_from_probability_distribution(
 
 
 def get_camera_direction(sensor, device: torch.cuda.device) -> torch.tensor:
-    # TODO: Add device
-    center_point = torch.tensor([(sensor.film().size()[0] * sensor.film().size()[1]) // 2], device='cuda')
-    return create_rays(sensor, center_point)
+    film = sensor.film()
+    sampler = sensor.sampler()
+    film_size = film.size()
+    total_samples = 1
+
+    if sampler.wavefront_size() != total_samples:
+        sampler.seed(0, total_samples)
+
+    # Enumerate discrete sample & pixel indices, and uniformly sample
+    # positions within each pixel.
+    #pos = mi.UInt32(points.split(split_size=1))
+
+    #scale = mi.Vector2f(1.0 / film_size[0], 1.0 / film_size[1])
+    pos = mi.Vector2f(mi.Float(0.5), mi.Float(0.5))
+
+    #pos += sampler.next_2d()
+
+    # Sample rays starting from the camera sensor
+    rays, weights = sensor.sample_ray(
+        time=0,
+        sample1=sampler.next_1d(),
+        sample2=pos,
+        sample3=0
+    )
+
+    return rays.o.torch(), rays.d.torch()
+
+
+def get_camera_frustum(sensor, device: torch.cuda.device) -> torch.tensor:
+    film = sensor.film()
+    sampler = sensor.sampler()
+    film_size = film.size()
+    total_samples = 4
+
+    if sampler.wavefront_size() != total_samples:
+        sampler.seed(0, total_samples)
+
+    # Enumerate discrete sample & pixel indices, and uniformly sample
+    # positions within each pixel.
+    #pos = mi.UInt32(points.split(split_size=1))
+
+    #scale = mi.Vector2f(1.0 / film_size[0], 1.0 / film_size[1])
+    pos = mi.Vector2f(mi.Float([0.0, 1.0, 0.0, 1.0]), mi.Float([0.0, 0.0, 1.0, 1.0]))
+
+    #pos += sampler.next_2d()
+
+    # Sample rays starting from the camera sensor
+    rays, weights = sensor.sample_ray(
+        time=0,
+        sample1=sampler.next_1d(),
+        sample2=pos,
+        sample3=0
+    )
+
+    return rays.o.torch(), rays.d.torch()
 
 
 def create_rays(sensor, points) -> torch.tensor:
     film = sensor.film()
     sampler = sensor.sampler()
-    film_size = film.crop_size()
+    film_size = film.size()
     total_samples = points.shape[0]
 
     if sampler.wavefront_size() != total_samples:
@@ -51,8 +103,8 @@ def create_rays(sensor, points) -> torch.tensor:
     pos = mi.UInt32(points.split(split_size=1))
 
     scale = mi.Vector2f(1.0 / film_size[0], 1.0 / film_size[1])
-    pos = mi.Vector2f(mi.Float(pos  % int(film_size[1])),
-                mi.Float(pos // int(film_size[0])))
+    pos = mi.Vector2f(mi.Float(pos % int(film_size[0])),
+                mi.Float(pos // int(film_size[1])))
 
     #pos += sampler.next_2d()
 
@@ -109,18 +161,7 @@ def generate_epipolar_constraints(scene, params, device):
     projector_sensor = scene.sensors()[1]
     proj_xwidth, proj_ywidth = projector_sensor.film().size()
     
-    # These values correspond to a flattened array.
-    # Upper-Left
-    # Upper-Right
-    # Lower-Right
-    # Lower-Left
-    proj_frame_bounds = torch.tensor([0,
-                                proj_xwidth,
-                                proj_ywidth*proj_xwidth,
-                                proj_ywidth*proj_xwidth - proj_xwidth],
-                                device=device)
-
-    ray_origins, ray_directions = create_rays(projector_sensor, proj_frame_bounds)
+    ray_origins, ray_directions = get_camera_frustum(projector_sensor, device)
 
     near_clip = params['PerspectiveCamera_1.near_clip']
     far_clip = params['PerspectiveCamera_1.far_clip']
@@ -133,37 +174,14 @@ def generate_epipolar_constraints(scene, params, device):
 
     K = utils.build_projection_matrix(params['PerspectiveCamera.x_fov'], params['PerspectiveCamera.near_clip'], params['PerspectiveCamera.far_clip'])
     CAMERA_TO_WORLD = params["PerspectiveCamera.to_world"].matrix.torch()[0]
-    CAMERA_TO_WORLD[0:3, 0:3] = CAMERA_TO_WORLD[0:3, 0:3] @ math.getYTransform(-np.pi, device)
 
     epipolar_points = transforms.transform_points(epipolar_points, CAMERA_TO_WORLD.inverse())
     epipolar_points = transforms.transform_points(epipolar_points, K)[:, 0:2]
-    #epipolar_points = transforms.convert_points_from_homogeneous(epipolar_points)
 
     epi_points_np = epipolar_points.detach().cpu().numpy()
 
-    ##
-    #
-    #
-    # TEST
-    #
-    ##
-
-
-    #camera_size = np.array(camera_sensor.film().crop_size()) # X,Y
-
-
-
-    #fig = plt.figure()
-    #ax = fig.add_subplot(1,1,1)
     hull = ConvexHull(epi_points_np)
-    #line_segments = [hull.points[simplex] for simplex in hull.simplices]
-    #line_segments = np.vstack(line_segments)
-    #line_segments = line_segments[::2, :]
     line_segments = epipolar_points[hull.vertices]
-    #ax.scatter(hull.vertices[:, 0], hull.vertices[:, 1])
-    #convex_hull_plot_2d(hull, ax=ax)
-    #plt.show(block=True)
-
 
     # We could also calculate the fundamental matrix 
     # and use this to estimate epipolar lines here
@@ -177,7 +195,6 @@ def generate_epipolar_constraints(scene, params, device):
     #camera_size = camera_size[[1, 0]] # swap image size to Y,X
     
     epi_points_np = line_segments.cpu().numpy()
-    #epi_points_np[:, 0] *= 1.5
     epi_points_np = (epi_points_np + 1.0) * 0.5
     epi_points_np = epi_points_np[:, [1, 0]]
     epi_points_np *= camera_size
@@ -185,9 +202,6 @@ def generate_epipolar_constraints(scene, params, device):
 
     image = np.zeros(camera_size[[1, 0]], dtype=np.uint8)
     image = cv2.fillPoly(image, [epi_points_np.astype(int)], color=1)
-    #image = cv2.fillPoly(image, pts=[epi_points_np.astype(int)[:, [1, 0]]], color=1)
-    #image = cv2.flip(image, 0)
-
     cv2.imshow("Epipolar Image", image*255)
     cv2.waitKey(0)
     

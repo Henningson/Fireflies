@@ -7,6 +7,7 @@ import Graphics.rasterization as rasterization
 import Utils.transforms as transforms
 import Objects.Transformable as Transformable
 import Objects.Camera as Camera
+import yaml
 
 from typing import List
 
@@ -144,16 +145,29 @@ class Laser(Camera.Camera):
         WORLD_TO_CAMERA = CAMERA_TO_WORLD.inverse()
 
         epipolar_max = transforms.transform_points(epipolar_max, WORLD_TO_CAMERA)
-        epipolar_max = transforms.transform_points(epipolar_max, self._perspective)
-        epipolar_max = transforms.convert_points_from_homogeneous(epipolar_max)
+        epipolar_max = transforms.transform_points(epipolar_max, self._perspective)[:, 0:2]
+        #epipolar_max = transforms.convert_points_from_homogeneous(epipolar_max)
 
         epipolar_min = transforms.transform_points(epipolar_min, WORLD_TO_CAMERA)
-        epipolar_min = transforms.transform_points(epipolar_min, self._perspective)
-        epipolar_min = transforms.convert_points_from_homogeneous(epipolar_min)
+        epipolar_min = transforms.transform_points(epipolar_min, self._perspective)[:, 0:2]
+        #epipolar_min = transforms.convert_points_from_homogeneous(epipolar_min)
         
         lines = torch.stack([epipolar_min, epipolar_max], dim=1)
 
         return rasterization.rasterize_lines(lines, sigma, texture_size)
+
+
+    def save(self, filepath: str):
+        save_dict = {
+            'rays': self._rays.detach().cpu().numpy().tolist(),
+            'fov': self._fov.torch().detach().cpu().numpy()[0],
+            'near_clip': self._near_clip,
+            'far_clip': self._far_clip
+        }
+
+        with open(filepath, 'w') as file:
+            yaml.dump(save_dict, file)
+        
 
 
 

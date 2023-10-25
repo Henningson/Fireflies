@@ -80,7 +80,12 @@ class Scene:
     def loadMeshes(self):
         meshes = self.mi_xml.find_all('shape')
         param_mesh = "PLYMesh"
-        for count, mesh in enumerate(meshes):
+
+        count = 0
+        for mesh in meshes:
+            if mesh.find("emitter") is not None:
+                continue
+
             temp_param_mesh = param_mesh    
             if count > 0:
                 temp_param_mesh += "_{0}".format(count)
@@ -93,13 +98,25 @@ class Scene:
                 continue
             
             # Object is randomizable => Create randomizable object, and connect it to the mitsuba parameter.
-            self.meshes[temp_param_mesh] = Transformable.Mesh(name = mesh_name, 
+            if "is_flame" in mesh_config and mesh_config["is_flame"]:
+                self.meshes[temp_param_mesh] = Transformable.FlameShapeModel(name = mesh_name, 
                                                               config=mesh_config, 
                                                               vertex_data =self.scene_params[temp_param_mesh + ".vertex_positions"], 
                                                               sequential_animation=self._sequential_animation,
                                                               base_path=self.firefly_path,
                                                               device=self._device)
+            else:
+                self.meshes[temp_param_mesh] = Transformable.Mesh(name = mesh_name, 
+                                                                config=mesh_config, 
+                                                                vertex_data =self.scene_params[temp_param_mesh + ".vertex_positions"], 
+                                                                sequential_animation=self._sequential_animation,
+                                                                base_path=self.firefly_path,
+                                                                device=self._device)
+            
+
+
             self._parent_transformables.append(self.meshes[temp_param_mesh])
+            count += 1
 
 
     def loadCurves(self):
@@ -154,8 +171,11 @@ class Scene:
 
     def updateMeshes(self) -> None:
         for key, mesh in self.meshes.items():
-            rand_verts = mesh.getVertexData()
+            rand_verts, faces = mesh.getVertexData()
             self.scene_params[key + ".vertex_positions"] = mi.Float32(rand_verts.flatten())
+
+            if faces is not None:
+                self.scene_params[key + ".faces"] = mi.UInt32(faces.flatten())
 
             if mesh.animated():
                 if self._num_updates % self._steps_per_frame == 0:
@@ -233,7 +253,7 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     import cv2
 
-    base_path = "scenes/OpenGLTest3/"
+    base_path = "scenes/FLAME/"
 
     mitsuba_scene = mi.load_file(os.path.join(base_path, "scene.xml"))
     mitsuba_params = mi.traverse(mitsuba_scene)
@@ -243,12 +263,12 @@ if __name__ == "__main__":
 
 
 
-    # render = mi.render(mitsuba_scene, spp=20)
-    # import matplotlib.pyplot as plt
+    render = mi.render(mitsuba_scene, spp=20)
+    import matplotlib.pyplot as plt
 
-    # plt.axis("off")
-    # plt.imshow(render ** (1.0 / 2.2))
-    # plt.show()
+    plt.axis("off")
+    plt.imshow(render ** (1.0 / 2.2))
+    plt.show()
 
     firefly_scene = Scene(mitsuba_params, base_path)
 
@@ -258,7 +278,7 @@ if __name__ == "__main__":
         firefly_scene.randomize()
         render = mi.render(mitsuba_scene, spp=10)
         render = torch.clamp(render.torch(), 0, 1)[:, :, [2, 1, 0]].cpu().numpy()
-        cv2.imshow("Render", render)
+        cv2.imshow("Render.png", render)
         cv2.waitKey(1)
 
  
