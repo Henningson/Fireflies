@@ -1,6 +1,6 @@
 # Fireflies
 **Fireflies** is a tool for the domain-specific optimization and generation of laser-based structured light pattern.
-This repository accompanies the paper **Fireflies: Laser-based Single Shot Structured Light a la Carte**.
+This repository accompanies the paper **Fireflies: A working title**.
 This is a joint work of the <a href="https://www.lgdv.tf.fau.de/">Chair of Visual Computing</a> of the Friedrich-Alexander University of Erlangen-Nuremberg and the <a href="https://www.hno-klinik.uk-erlangen.de/phoniatrie/">Phoniatric Division</a> of the University Hospital Erlangen. 
 
 https://github.com/Henningson/Fireflies/assets/27073509/911e57d3-3aab-418d-ad02-e8721cd36785
