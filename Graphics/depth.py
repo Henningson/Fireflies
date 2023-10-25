@@ -75,6 +75,45 @@ def from_camera_non_wrapped(scene, spp=64):
     return result
 
 
+def get_segmentation_from_camera(scene, spp=1):
+    sensor = scene.sensors()[0]
+    film = sensor.film()
+    sampler = sensor.sampler()
+    film_size = film.crop_size()
+    total_samples = dr.prod(film_size) * spp
+
+    if sampler.wavefront_size() != total_samples:
+        sampler.seed(0, total_samples)
+
+    # Enumerate discrete sample & pixel indices, and uniformly sample
+    # positions within each pixel.
+    pos = dr.arange(mi.UInt32, total_samples)
+
+    pos //= spp
+    scale = mi.Vector2f(1.0 / film_size[0], 1.0 / film_size[1])
+    pos = mi.Vector2f(mi.Float(pos  % int(film_size[0])),
+                mi.Float(pos // int(film_size[0])))
+
+    pos += sampler.next_2d()
+
+    # Sample rays starting from the camera sensor
+    rays, weights = sensor.sample_ray(
+        time=0,
+        sample1=sampler.next_1d(),
+        sample2=pos * scale,
+        sample3=0
+    )
+
+    # Intersect rays with the scene geometry
+    surface_interaction = scene.ray_intersect(rays)
+
+    # Watch out, hacky stuff going on!
+    # Solution from: https://github.com/mitsuba-renderer/mitsuba3/discussions/882
+    shape_pointer = mi.Int(dr.reinterpret_array_v(mi.UInt, surface_interaction.shape)).torch()
+    shape_pointer -= shape_pointer.min()
+
+    return shape_pointer.reshape(film_size[1], film_size[0])
+
 
 @dr.wrap_ad(source='drjit', target='torch')
 def from_camera(scene, spp=64):

@@ -183,21 +183,22 @@ def main():
         if i >= config.sigma_reduce_at:
             sigma = sigma - sigma_step
 
-            
-        optim.zero_grad()
         firefly_scene.randomize()
+        segmentation = depth.get_segmentation_from_camera(global_scene).float()
+        optim.zero_grad()
 
         points = Laser.projectRaysToNDC()[:, 0:2]
         texture_init = rasterization.rasterize_points(points, sigma, tex_size)
         texture_init = rasterization.softor(texture_init)
 
-        #cv2.imshow("Tex", texture_init.detach().cpu().numpy())
-        #cv2.waitKey(1)
+        cv2.imshow("Tex", texture_init.detach().cpu().numpy())
+        cv2.waitKey(1)
+
+        cv2.imshow("Seg", segmentation.detach().cpu().numpy().astype(np.uint8)*255)
+        cv2.waitKey(1)
 
         hitpoints = cast_laser(Laser.originPerRay(), Laser.rays())
 
-
-        print(Laser.rays())
         world_points = Laser.originPerRay() + hitpoints * Laser.rays()
 
         ndc_points = transforms.project_to_camera_space(global_params, world_points).squeeze()
@@ -223,9 +224,18 @@ def main():
 
         loss = losses(pred_depth.repeat(1, 3, 1, 1), dense_depth.unsqueeze(0).unsqueeze(0).repeat(1, 3, 1, 1))
 
+        # Make sure that epipolar lines do not overlap too much
         lines = Laser.render_epipolar_lines(sigma, tex_size)
         epc_regularization = torch.nn.MSELoss()(rasterization.softor(lines), lines.sum(dim=0))
         loss += epc_regularization * config.epipolar_constraint_lambda
+
+        # Projected points should also not overlap
+        rasterized_points = rasterization.rasterize_points(ndc_points[:, 0:2], config.sigma, sensor_size)
+        loss += torch.nn.MSELoss()(rasterization.softor(rasterized_points), rasterized_points.sum(dim=0)) * 0.0005
+
+        # Lets go for segmentation to projection similarity here
+        loss += torch.nn.MSELoss()(rasterization.softor(rasterized_points), segmentation) * config.perspective_segmentation_similarity_lambda
+
 
         loss.backward()
         optim.step()
