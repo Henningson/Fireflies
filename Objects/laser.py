@@ -146,11 +146,9 @@ class Laser(Camera.Camera):
 
         epipolar_max = transforms.transform_points(epipolar_max, WORLD_TO_CAMERA)
         epipolar_max = transforms.transform_points(epipolar_max, self._perspective)[:, 0:2]
-        #epipolar_max = transforms.convert_points_from_homogeneous(epipolar_max)
-
+        
         epipolar_min = transforms.transform_points(epipolar_min, WORLD_TO_CAMERA)
         epipolar_min = transforms.transform_points(epipolar_min, self._perspective)[:, 0:2]
-        #epipolar_min = transforms.convert_points_from_homogeneous(epipolar_min)
         
         lines = torch.stack([epipolar_min, epipolar_max], dim=1)
 

@@ -29,7 +29,7 @@ import Utils.ConfigArgsParser as CAP
 import Utils.Args as Args
 import Utils.utils as utils
 
-
+import Utils.printer as printer
 from tqdm import tqdm
 
 
@@ -267,7 +267,10 @@ def main():
                 if config.save_images:
                     cv2.imwrite("ims/{0:05d}.png".format(i), (concat_im*255).astype(np.uint8))
 
-    print("Optimization done. Saving optimized laser.")
+    printer.Printer.OKG("Optimization done. Initiating post-processing.")
+    
+
+
     Laser.save(os.path.join(args.scene_path, "laser.yml"))
     print("Finished everything.")
 
