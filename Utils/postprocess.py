@@ -5,6 +5,7 @@ import Objects.intersections as intersections
 import Objects.laser as laser
 import Objects.Transformable as Transformable
 import Graphics.rasterization as rasterization
+import Graphics.depth as depth
 
 torch.manual_seed(0)
 DEVICE = "cuda" if torch.cuda.is_available() else "cpu"
@@ -26,36 +27,9 @@ class LaserPostProcessor:
         self._firefly_scene = firefly_scene
         self._mitsuba_scene = mitsuba_scene
         self._device = device
-   
+
+
     def removeClosePoints(self, laser, sigma, tex_size):
-        points = laser.projectRaysToNDC()[:, 0:2]
-        points *= tex_size.unsqueeze(0)
-        sigma_tensor = torch.tensor(sigma, device=self._device).unsqueeze(0)
-
-        merge_candidates = []
-        for i in range(points.shape[0]):
-                 hit = intersections.sphereSphere(points[i].unsqueeze(0), sigma_tensor, points[j].unsqueeze(0), sigma_tensor)
-
-                 if hit.any():
-                     merge_candidates.append((i, j))
-
-        print("Number of merges in this iteration: {0}".format(len(merge_candidates)))
-
-        merged_rays = []
-        rays = laser._rays
-        for candidate_a, candidate_b in merge_candidates:
-            merged_ray = (rays[candidate_a] + rays[candidate_b]) / 2.0
-            merged_rays.append(merged_ray)
-
-        merged_rays = torch.stack(merged_rays)
-        candidates = torch.tensor(merge_candidates, device=DEVICE).unique()
-        indices = torch.arange(0, rays.shape[0], 1, device=DEVICE)
-        non_colliding_ray_indices = ~(indices.unsqueeze(-1).repeat(1, candidates.shape[0]) == candidates.unsqueeze(0)).any(dim=1)
-
-        new_rays = torch.concatenate([rays[non_colliding_ray_indices], merged_rays])
-        return new_rays
-   
-    def newRemoveClosePoints(self, laser, sigma, tex_size):
 
         hit_found = True
         rays = laser._rays.clone()
@@ -99,44 +73,20 @@ class LaserPostProcessor:
                 i = 0
 
         return rays
+    
+    def removeOutliers(self, laser, shape_id=1, iterations=10):
+        shape_hits = []
         
+        for _ in range(iterations):
+            self._firefly_scene.randomize()
+            shape_hits.append(depth.cast_laser_id(self._mitsuba_scene, laser.originPerRay(), laser.rays()))
 
 
 
 
 
 
-                
-
-
-        for i in range(points.shape[0]):
-                 hit = intersections.sphereSphere(points[i].unsqueeze(0), sigma_tensor, points[j].unsqueeze(0), sigma_tensor)
-
-                 if hit.any():
-                     merge_candidates.append((i, j))
-
-        print("Number of merges in this iteration: {0}".format(len(merge_candidates)))
-
-        merged_rays = []
-        rays = laser._rays
-        for candidate_a, candidate_b in merge_candidates:
-            merged_ray = (rays[candidate_a] + rays[candidate_b]) / 2.0
-            merged_rays.append(merged_ray)
-
-        merged_rays = torch.stack(merged_rays)
-        candidates = torch.tensor(merge_candidates, device=DEVICE).unique()
-        indices = torch.arange(0, rays.shape[0], 1, device=DEVICE)
-        non_colliding_ray_indices = ~(indices.unsqueeze(-1).repeat(1, candidates.shape[0]) == candidates.unsqueeze(0)).any(dim=1)
-
-        new_rays = torch.concatenate([rays[non_colliding_ray_indices], merged_rays])
-        return new_rays
-
-
-
-
-
-
-if __name__ == "__main__":
+def testOverlappingPointRemoval():
     import numpy as np
     import cv2
 
@@ -172,7 +122,7 @@ if __name__ == "__main__":
 
 
         lpp = LaserPostProcessor(None, None, DEVICE)
-        laser_test._rays = lpp.newRemoveClosePoints(laser_test, 4*sigma, tex_size)
+        laser_test._rays = lpp.removeClosePoints(laser_test, 2*sigma, tex_size)
 
 
         new_tex = laser_test.generateTexture(sigma, tex_size)
@@ -184,7 +134,16 @@ if __name__ == "__main__":
         diff = ((tex-new_tex)*255).astype(np.uint8)
         cv2.imshow("Diff", cv2.applyColorMap(diff, cv2.COLORMAP_JET))
         cv2.waitKey(0)
-    
+
+
+def testOutlierRemoval():
+    pass
+
+
+
+if __name__ == "__main__":
+    #testOverlappingPointRemoval()
+    testOutlierRemoval()
 
 
         '''

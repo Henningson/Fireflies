@@ -31,6 +31,15 @@ def from_laser(scene, params, laser):
 
 
 
+@dr.wrap_ad(source='torch', target='drjit')
+def cast_laser_id(scene, origin, direction):
+    origin_point = mi.Point3f(origin[:, 0].array, origin[:, 1].array, origin[:, 2].array)
+    rays_vector = mi.Vector3f(direction[:, 0].array, direction[:, 1].array, direction[:, 2].array)
+    surface_interaction = scene.ray_intersect(mi.Ray3f(origin_point, rays_vector))
+    shape_pointer = mi.Int(dr.reinterpret_array_v(mi.UInt, surface_interaction.shape)).torch()
+    shape_pointer -= shape_pointer.min()
+    return shape_pointer
+
 
 
 def from_camera_non_wrapped(scene, spp=64):

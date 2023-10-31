@@ -55,6 +55,8 @@ def cast_laser(origin, direction):
     return mi.TensorXf(result, shape=(len(result), 1))
 
 
+
+
 def main():
     global global_scene
     global global_params
