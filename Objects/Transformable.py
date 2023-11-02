@@ -337,21 +337,33 @@ class FlameShapeModel(Mesh):
         self.setScaleBoundaries(config["scale"])
         self._stddev_range = config["stddev_range"]
         self._flame_layer = flame.FLAME(flame_config).to(self._device)
+        self._shape_params = None
+        self._expression_params = None
+        self._pose_params = None
 
 
     def loadAnimation(self):
         return None
     
+    def shapeParams(self) -> torch.tensor:
+        return self._shape_params
+    
+    def expressionParams(self) -> torch.tensor:
+        return self._expression_params
+    
+    def poseParams(self) -> torch.tensor:
+        return self._pose_params
+
     def getVertexData(self):
         if not self._animated:
             return self._vertices, self._flame_layer.faces
 
 
-        shape_params = (torch.rand(1, 100, device=self._device) - 0.5) * 2.0 * self._stddev_range
-        pose_params = torch.zeros(1, 6, device=self._device)
-        expression_params = (torch.rand(1, 50, device=self._device) - 0.5) * 2.0 * self._stddev_range
+        self._shape_params = (torch.rand(1, 100, device=self._device) - 0.5) * 2.0 * self._stddev_range
+        self._pose_params = torch.zeros(1, 6, device=self._device)
+        self._expression_params = (torch.rand(1, 50, device=self._device) - 0.5) * 2.0 * self._stddev_range
 
-        vertices, _ = self._flame_layer(shape_params, expression_params, pose_params)
+        vertices, _ = self._flame_layer(self._shape_params, self._expression_params, self._pose_params)
         vertices = vertices[0]
 
 
