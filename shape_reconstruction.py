@@ -22,9 +22,13 @@ import Utils.transforms as transforms
 import Utils.math as math
 import Objects.laser as laser
 import Objects.Transformable as Transformable
+
 import Models.GatedUNet as GatedUNet
 import Models.UNet as UNet
 import Models.UNetToFlame as UNetToFlame
+import Models.LP_UNet_Flame as LP_UNet_Flame
+import Models.LP_MLP_Flame as LP_MLP_Flame
+
 import Graphics.rasterization as rasterization
 import Metrics.Losses as Losses
 import Utils.ConfigArgsParser as CAP
@@ -153,14 +157,16 @@ def main():
 
     # Init U-Net and params
     MODEL_CONFIG = {
-        'in_channels': config.n_beams + 3, 
+        'in_channels': 1, 
         'out_channels': 1, 
-        'features': [32, 64, 128, 256, 512], 
+        'num_beams': config.n_beams,
+        #'features': [32, 64, 128, 256, 512], 
+        'features': [1024, 512, 256, 128, 64, 32],
         'output_image_size': global_scene.sensors()[0].film().size(), 
         'shape_params': 100, 
         'expression_params': 50}
     
-    model = UNetToFlame.Model(config=MODEL_CONFIG, device=DEVICE).to(DEVICE)
+    model = LP_MLP_Flame.Model(config=MODEL_CONFIG, device=DEVICE).to(DEVICE)
     model.train()
     
     losses = Losses.Handler([
@@ -184,7 +190,7 @@ def main():
     upsampling_step = 0
 
 
-    reduction_steps = config.iterations - config.sigma_reduce_at
+    reduction_steps = config.sigma_reduce_end
     sigma_step = (config.sigma - config.sigma_end) / reduction_steps
     with autograd.detect_anomaly():
         for i in (progress_bar := tqdm(range(config.iterations))):
@@ -193,11 +199,7 @@ def main():
             #    upsampling_step += 1
             #    global_params.update()
 
-
-            if i == 13:
-                a = 1
-
-            if i >= config.sigma_reduce_at:
+            if i <= reduction_steps:
                 sigma = sigma - sigma_step
 
             firefly_scene.randomize()
@@ -225,17 +227,19 @@ def main():
 
             # Use U-Net to interpolate
             final_input = torch.vstack([sparse_depth, rendered_image.moveaxis(-1, 0)])
-            predicted_vertices = model(final_input.unsqueeze(0))
-
+            predicted_vertices, shape_estimates, expression_estimates = model(world_points.unsqueeze(0))
+            print(predicted_vertices[0])
             #loss = losses(pred_depth.repeat(1, 3, 1, 1), dense_depth.unsqueeze(0).unsqueeze(0).repeat(1, 3, 1, 1))
             
             loss = torch.zeros(1, device=DEVICE)
-            loss = losses(predicted_vertices, firefly_scene.meshes[flame_key].getVertexData()[0])
+            loss = losses(shape_estimates, firefly_scene.meshes[flame_key].shapeParams())
+
+            loss = losses(expression_estimates, firefly_scene.meshes[flame_key].expressionParams())
 
 
             # Make sure that epipolar lines do not overlap too much
             lines = Laser.render_epipolar_lines(sigma, tex_size)
-            epc_regularization = torch.nn.MSELoss()(rasterization.softor(lines), lines.sum(dim=0))
+            #epc_regularization = torch.nn.MSELoss()(rasterization.softor(lines), lines.sum(dim=0))
             #loss += epc_regularization * config.epipolar_constraint_lambda
 
             # Projected points should also not overlap
@@ -277,7 +281,7 @@ def main():
                         cv2.imwrite("ims/{0:05d}.png".format(i), (concat_im*255).astype(np.uint8))
 
 
-                    if i % 50 == 0:
+                    if i % 10 == 0:
                         radian = np.pi / 180.0
                         yaw_mat   = math.getYawTransform(90.0*radian, DEVICE)
                         pitch_mat = math.getPitchTransform(0.0, DEVICE)
@@ -293,21 +297,22 @@ def main():
                         # Visualize Landmarks
                         # This visualises the static landmarks and the pose dependent dynamic landmarks used for RingNet project
                         vis_vertices = predicted_vertices
+                        print(vis_vertices[0])
                         vertex_colors = np.ones([vis_vertices.shape[0], 4]) * [0.3, 0.3, 0.3, 1.0]
 
                         pred_tri_mesh = trimesh.Trimesh(firefly_scene.meshes[flame_key].getVertexData()[0].detach().cpu().numpy(), model._flame.faces, vertex_colors=vertex_colors)
-                        pred_tri_mesh.apply_transform(transform_a.detach().cpu().numpy()) #@ transforms.toMat4x4(math.getXTransform(-np.pi*0.5, DEVICE))).detach().cpu().numpy())
+                        pred_tri_mesh.apply_transform(transform_a.detach().cpu().numpy() )
                         pred_mesh = pyrender.Mesh.from_trimesh(pred_tri_mesh)
                         
                         tri_mesh = trimesh.Trimesh(vis_vertices.detach().cpu().numpy().squeeze(), model._flame.faces, vertex_colors=vertex_colors)
-                        tri_mesh.apply_transform(transform_b.detach().cpu().numpy())
+                        tri_mesh.apply_transform(transform_b.detach().cpu().numpy() @ transforms.toMat4x4(math.getXTransform(np.pi*0.5, DEVICE)).detach().cpu().numpy())
                         mesh = pyrender.Mesh.from_trimesh(tri_mesh)
 
                         scene = pyrender.Scene()
                         scene.add(mesh)
                         scene.add(pred_mesh)
 
-                        pyrender.Viewer(scene, use_raymond_lighting=True, viewport_size=[1920, 1080], run_in_thread=True)
+                        pyrender.Viewer(scene, use_raymond_lighting=True, viewport_size=[1920, 1080])
 
     printer.Printer.OKG("Optimization done. Initiating post-processing.")
     

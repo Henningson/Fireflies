@@ -359,9 +359,9 @@ class FlameShapeModel(Mesh):
             return self._vertices, self._flame_layer.faces
 
 
-        self._shape_params = (torch.rand(1, 100, device=self._device) - 0.5) * 2.0 * self._stddev_range
+        self._shape_params = torch.ones(1, 100, device=self._device)*5.0#(torch.rand(1, 100, device=self._device) - 0.5) * 2.0 * self._stddev_range
         self._pose_params = torch.zeros(1, 6, device=self._device)
-        self._expression_params = (torch.rand(1, 50, device=self._device) - 0.5) * 2.0 * self._stddev_range
+        self._expression_params = torch.zeros(1, 50, device=self._device)#(torch.rand(1, 50, device=self._device) - 0.5) * 2.0 * self._stddev_range
 
         vertices, _ = self._flame_layer(self._shape_params, self._expression_params, self._pose_params)
         vertices = vertices[0]

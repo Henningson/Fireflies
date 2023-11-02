@@ -17,13 +17,13 @@ class Printer:
         print(bcolors.FAIL + "ERROR: " + message + bcolors.ENDC)
 
     def OKG(message):
-        print(bcolors.OKGREEN + "ERROR: " + message + bcolors.ENDC)
+        print(bcolors.OKGREEN + "OK: " + message + bcolors.ENDC)
 
     def OKC(message):
-        print(bcolors.OKCYAN + "ERROR: " + message + bcolors.ENDC)
+        print(bcolors.OKCYAN + "OK: " + message + bcolors.ENDC)
 
     def OKB(message):
-        print(bcolors.OKCYAN + "ERROR: " + message + bcolors.ENDC)
+        print(bcolors.OKCYAN + "OK: " + message + bcolors.ENDC)
 
     def KV(key, value):
         print("{0}{1}: {2}{3}{4}".format(bcolors.OKCYAN, key, bcolors.OKGREEN, value, bcolors.ENDC))
