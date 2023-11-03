@@ -28,6 +28,7 @@ import Models.UNet as UNet
 import Models.UNetToFlame as UNetToFlame
 import Models.LP_UNet_Flame as LP_UNet_Flame
 import Models.LP_MLP_Flame as LP_MLP_Flame
+import Models.PointNet as PointNet
 
 import Graphics.rasterization as rasterization
 import Metrics.Losses as Losses
@@ -120,6 +121,10 @@ def main():
     final_sampling_map = variance_map * constraint_map
     final_sampling_map /= final_sampling_map.sum()
 
+    # Gotta flip this in y direction, since apparently I can't program
+    final_sampling_map = torch.fliplr(final_sampling_map)
+    final_sampling_map = torch.flip(final_sampling_map, (0,))
+
     # sample points for laser rays
     chosen_points = LaserEstimation.points_from_probability_distribution(final_sampling_map, config.n_beams)
 
@@ -166,7 +171,7 @@ def main():
         'shape_params': 100, 
         'expression_params': 50}
     
-    model = LP_MLP_Flame.Model(config=MODEL_CONFIG, device=DEVICE).to(DEVICE)
+    model = PointNet.Model(config=MODEL_CONFIG, device=DEVICE).to(DEVICE)
     model.train()
     
     losses = Losses.Handler([
@@ -183,7 +188,7 @@ def main():
         {'params': Laser._rays,         'lr': config.lr_laser},
         {'params': sigma,               'lr': config.lr_sigma}
         ])
-    scheduler = torch.optim.lr_scheduler.PolynomialLR(optim, total_iters = config.iterations, power=0.99)
+    #scheduler = torch.optim.lr_scheduler.PolynomialLR(optim, total_iters = config.iterations, power=1.0)
 
     upsampling = [global_scene.sensors()[0].film().size() // 2**i 
                   for i in range(config.n_upsamples - 1, -1, -1)]
@@ -199,7 +204,7 @@ def main():
             #    upsampling_step += 1
             #    global_params.update()
 
-            if i <= reduction_steps:
+            if i < reduction_steps:
                 sigma = sigma - sigma_step
 
             firefly_scene.randomize()
@@ -227,13 +232,13 @@ def main():
 
             # Use U-Net to interpolate
             final_input = torch.vstack([sparse_depth, rendered_image.moveaxis(-1, 0)])
-            predicted_vertices, shape_estimates, expression_estimates = model(world_points.unsqueeze(0))
-            print(predicted_vertices[0])
+            predicted_vertices, shape_estimates, expression_estimates = model(world_points.unsqueeze(0).transpose(1,2))
+            #print(predicted_vertices[0])
             #loss = losses(pred_depth.repeat(1, 3, 1, 1), dense_depth.unsqueeze(0).unsqueeze(0).repeat(1, 3, 1, 1))
             
             loss = torch.zeros(1, device=DEVICE)
             loss = losses(shape_estimates, firefly_scene.meshes[flame_key].shapeParams())
-
+            print(shape_estimates)
             loss = losses(expression_estimates, firefly_scene.meshes[flame_key].expressionParams())
 
 
@@ -254,7 +259,7 @@ def main():
 
             loss.backward()
             optim.step()
-            scheduler.step()
+            #scheduler.step()
 
             progress_bar.set_description("Loss: {0:.4f}, Sigma: {1:.4f}".format(loss.item(), sigma.detach().cpu().numpy()[0]))
             with torch.no_grad():
@@ -281,7 +286,7 @@ def main():
                         cv2.imwrite("ims/{0:05d}.png".format(i), (concat_im*255).astype(np.uint8))
 
 
-                    if i % 10 == 0:
+                    if i % 50 == 0:
                         radian = np.pi / 180.0
                         yaw_mat   = math.getYawTransform(90.0*radian, DEVICE)
                         pitch_mat = math.getPitchTransform(0.0, DEVICE)
@@ -297,7 +302,7 @@ def main():
                         # Visualize Landmarks
                         # This visualises the static landmarks and the pose dependent dynamic landmarks used for RingNet project
                         vis_vertices = predicted_vertices
-                        print(vis_vertices[0])
+                        #print(vis_vertices[0])
                         vertex_colors = np.ones([vis_vertices.shape[0], 4]) * [0.3, 0.3, 0.3, 1.0]
 
                         pred_tri_mesh = trimesh.Trimesh(firefly_scene.meshes[flame_key].getVertexData()[0].detach().cpu().numpy(), model._flame.faces, vertex_colors=vertex_colors)

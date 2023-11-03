@@ -244,7 +244,7 @@ class FLAME(nn.Module):
             landmarks: N X number of landmarks X 3
         """
         betas = torch.cat(
-            [shape_params, self.shape_betas, expression_params, self.expression_betas],
+            [shape_params, self.shape_betas.repeat(shape_params.shape[0], 1), expression_params, self.expression_betas.repeat(expression_params.shape[0], 1)],
             dim=1,
         )
         neck_pose = neck_pose if neck_pose is not None else self.neck_pose

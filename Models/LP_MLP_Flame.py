@@ -95,7 +95,7 @@ class Model(nn.Module):
         vertices, _ = self._flame(shape_estimates, expression_estimates, self._pose_params)
 
         # We directly output the vertex positions here
-        return vertices, shape_estimates*100.0, expression_estimates*100.0
+        return vertices, shape_estimates, expression_estimates
     
 
 
