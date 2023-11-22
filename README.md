@@ -5,6 +5,24 @@ This is a joint work of the <a href="https://www.lgdv.tf.fau.de/">Chair of Visua
 
 https://github.com/Henningson/Fireflies/assets/27073509/911e57d3-3aab-418d-ad02-e8721cd36785
 
+# Why do we need scene-specific point pattern?
+The point pattern used in single-shot structured light can generally be regarded as a sampling strategy.
+However, different sampling strategies allow for different observations, for example, here, a general image with different sampling strategies are shown.
+First, a gradient-based sampling, next a blue noise sampling, and lastly a vanilla random sampling.
+Which of these point pattern lets you decipher the image the best?
+
+When it comes to laser based single shot structured light, this is a good case for how the distribution of the laser pattern directly influences the reconstructability of the scene.
+However, scenes are unlike images variable in its composition, i.e. objects may move, rotate or deform, or the camera may move, lighting changes, etc. etc.
+So finding a point pattern that is scene specific and optimal is a highly inverse problem.
+Thus, we often see structured light pattern, that are
+ - easy to produce e.g. single line laser or symmetric point pattern,
+ - or very general in its applicability.
+However, if we think about specific scenes, we surely can find a pattern that increases the accuracy of our reconstruction.
+And because its so nice, here's the actual optimization of the point pattern as a video:
+
+
+
+
 # Building your own Scene
 First, make sure you have the <a href="https://github.com/mitsuba-renderer/mitsuba-blender">Mitsuba Blender Add-On</a> installed.
 The Firefly Blender Add-On can be found in the ```blender``` folder.
