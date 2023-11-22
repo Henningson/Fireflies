@@ -31,6 +31,47 @@ def rasterize_points(points: torch.tensor, sigma: float, texture_size: torch.ten
     return point_distances
 
 
+def rasterize_points_in_non_ndc(points: torch.tensor, sigma: float, texture_size: torch.tensor, device: torch.cuda.device = torch.device("cuda")) -> torch.tensor:
+    x, y = torch.meshgrid(torch.arange(0, texture_size[1], device=device), torch.arange(0, texture_size[0], device=device), indexing='ij')
+    y = y.unsqueeze(0).repeat((points.shape[0], 1, 1))
+    x = x.unsqueeze(0).repeat((points.shape[0], 1, 1))    
+
+
+    y_dist = y - points[:, 0:1].unsqueeze(-1)
+    x_dist = x - points[:, 1:2].unsqueeze(-1)
+    
+    point_distances = (y_dist*y_dist + x_dist*x_dist).sqrt()# / (texture_size * texture_size).sum().sqrt()
+    point_distances = torch.exp(-torch.pow(point_distances, 2) / (sigma * sigma))
+
+
+    return point_distances
+
+
+def memory_efficient_pointrasterization_softor(points: torch.tensor, sigma: float, texture_size: torch.tensor, device: torch.cuda.device = torch.device("cuda")) -> torch.tensor:
+    raster_image = torch.ones(texture_size.tolist(), device=device)
+    for i in range(points.shape[0]):
+        x, y = torch.meshgrid(torch.arange(0, texture_size[1], device=device), torch.arange(0, texture_size[0], device=device), indexing='ij')
+        y_dist = y - points[i, 0:1]
+        x_dist = x - points[i, 1:2]
+        point_distances = (y_dist*y_dist + x_dist*x_dist).sqrt()
+        point_distances = torch.exp(-torch.pow(point_distances, 2) / (sigma * sigma))
+        raster_image = (1 - raster_image) * raster_image
+
+    return raster_image
+
+
+def memory_efficient_pointrasterization_sum(points: torch.tensor, sigma: float, texture_size: torch.tensor, device: torch.cuda.device = torch.device("cuda")) -> torch.tensor:
+    raster_image = torch.zeros(texture_size.tolist(), device=device)
+    for i in range(points.shape[0]):
+        x, y = torch.meshgrid(torch.arange(0, texture_size[1], device=device), torch.arange(0, texture_size[0], device=device), indexing='ij')
+        y_dist = y - points[i, 0:1]
+        x_dist = x - points[i, 1:2]
+        point_distances = (y_dist*y_dist + x_dist*x_dist).sqrt()
+        point_distances = torch.exp(-torch.pow(point_distances, 2) / (sigma * sigma))
+        raster_image = raster_image + point_distances
+
+    return raster_image
+
 # We assume points to be in NDC [-1, 1]
 def rasterize_depth(points: torch.tensor, depth_vals: torch.tensor, sigma: float, texture_size: torch.tensor, device: torch.cuda.device = torch.device("cuda")) -> torch.tensor:
     tex = torch.zeros(texture_size.tolist(), dtype=torch.float32, device=device)
