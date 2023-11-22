@@ -18,6 +18,7 @@ So finding a point pattern that is scene specific and optimal is a highly invers
 Thus, we often see structured light pattern, that are
  - easy to produce e.g. single line laser or symmetric point pattern,
  - or very general in its applicability.
+
 However, if we think about specific scenes, we surely can find a pattern that increases the accuracy of our reconstruction.
 And because its so nice, here's the actual optimization of the point pattern as a video:  
 
