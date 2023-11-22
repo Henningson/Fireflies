@@ -20,6 +20,7 @@ Thus, we often see structured light pattern, that are
  - or very general in its applicability.
 However, if we think about specific scenes, we surely can find a pattern that increases the accuracy of our reconstruction.
 And because its so nice, here's the actual optimization of the point pattern as a video:
+
 https://github.com/Henningson/Fireflies/assets/27073509/0afc5a79-d0ac-485a-a1f1-75451d0e4ed9
 
 
