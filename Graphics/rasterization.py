@@ -31,6 +31,7 @@ def rasterize_points(points: torch.tensor, sigma: float, texture_size: torch.ten
     return point_distances
 
 
+
 def rasterize_points_in_non_ndc(points: torch.tensor, sigma: float, texture_size: torch.tensor, device: torch.cuda.device = torch.device("cuda")) -> torch.tensor:
     x, y = torch.meshgrid(torch.arange(0, texture_size[1], device=device), torch.arange(0, texture_size[0], device=device), indexing='ij')
     y = y.unsqueeze(0).repeat((points.shape[0], 1, 1))
