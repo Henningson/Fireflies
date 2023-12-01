@@ -207,6 +207,9 @@ class Mesh(Transformable):
         #
         return vertices
 
+    def setFaces(self, faces: List[float]) -> None:
+        self._faces = torch.tensor(faces, device=self._device) if faces is not None else faces
+
 
     def setVertices(self, vertices: List[float]) -> None:
         self._vertices = torch.tensor(vertices, device=self._device).reshape(-1, 3)
@@ -232,6 +235,10 @@ class Mesh(Transformable):
         self._randomized_world = self.sampleTranslation() @ \
                       self.sampleRotation() @ \
                       self.sampleScale()
+
+
+    def faces(self) -> torch.tensor:
+        return self._faces
 
 
     def getVertexData(self) -> torch.tensor:
@@ -278,10 +285,64 @@ class Mesh(Transformable):
             index = random.randint(0, num_anim_frames - 1)
 
         return self._vertex_offsets[index]
+
+
+
+class ShapeModel(Mesh):
+    def __init__(self,
+                 name: str,
+                 vertex_data: List[float],
+                 config: dict, 
+                 device: torch.cuda.device = torch.device("cuda"),
+                 base_path: str = None,
+                 sequential_animation: bool = False):
+        
+        self._device = device
+        self._name = name
+
+        self.setTranslationBoundaries(config["translation"])
+        self.setRotationBoundaries(config["rotation"])
+        self.setWorld(config['to_world'])
+        self._world = self._world @ transforms.toMat4x4(utilsmath.getXTransform(np.pi*0.5, self._device))
+        self._randomized_world = self._world.clone()
+
+        self._randomizable = bool(config["randomizable"])
+        self._relative = bool(config["is_relative"])
+
+        self._parent_name = config["parent_name"] if self._relative else None
+        # Is loaded in a second step
+        self._parent = None
+        self._child = None
+
+
+        self.setVertices(vertex_data)
+        self.setScaleBoundaries(config["scale"])
+        self._animated = bool(config["animated"])
+        self._sequential_animation = sequential_animation
+
+        self._animation_index = 0
+
+        self.setVertices(vertex_data)
+        self.setScaleBoundaries(config["scale"])
+        self._stddev_range = config["stddev_range"]
+        self._shape_layer = None
+        self._model_params = {}
+
+
+    def loadAnimation(self):
+        return None
     
+    def modelParmas(self) -> dict:
+        return self._model_params
+    
+    def setModelParams(self, dict: dict) -> None:
+        assert(NotImplementedError)
+
+    def getVertexData(self):
+        assert(NotImplementedError)
 
 
-class FlameShapeModel(Mesh):
+class FlameShapeModel(ShapeModel):
     def __init__(self,
                  name: str,
                  vertex_data: List[float],
@@ -336,15 +397,16 @@ class FlameShapeModel(Mesh):
         self.setVertices(vertex_data)
         self.setScaleBoundaries(config["scale"])
         self._stddev_range = config["stddev_range"]
-        self._flame_layer = flame.FLAME(flame_config).to(self._device)
-        self._shape_params = None
-        self._expression_params = None
-        self._pose_params = None
+        self._shape_layer = flame.FLAME(flame_config).to(self._device)
+        self._faces = self._shape_layer.faces
 
 
     def loadAnimation(self):
         return None
     
+    def modelParams(self) -> dict:
+        return self._shape_params
+
     def shapeParams(self) -> torch.tensor:
         return self._shape_params
     
@@ -356,20 +418,20 @@ class FlameShapeModel(Mesh):
 
     def getVertexData(self):
         if not self._animated:
-            return self._vertices, self._flame_layer.faces
+            return self._vertices, self._shape_layer.faces
 
 
         self._shape_params = (torch.rand(1, 100, device=self._device) - 0.5) * 2.0 * self._stddev_range
         self._pose_params = torch.zeros(1, 6, device=self._device)
-        self._expression_params = (torch.rand(1, 50, device=self._device) - 0.5) * 2.0 * self._stddev_range
+        self._expression_params = torch.zeros(1, 50, device=self._device)
 
-        vertices, _ = self._flame_layer(self._shape_params, self._expression_params, self._pose_params)
+        vertices, _ = self._shape_layer(self._shape_params, self._expression_params, self._pose_params)
         vertices = vertices[0]
 
 
         vertices = transforms.transform_points(vertices, self.world() @ transforms.toMat4x4(utilsmath.getXTransform(np.pi*0.5, self._device)))
 
-        return vertices, self._flame_layer.faces
+        return vertices, self._shape_layer.faces
     
 
 

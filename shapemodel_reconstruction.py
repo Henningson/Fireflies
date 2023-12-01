@@ -36,6 +36,7 @@ import Metrics.Losses as Losses
 import Utils.ConfigArgsParser as CAP
 import Utils.Args as Args
 import Utils.utils as utils
+
 import trimesh
 import pyrender
 import matplotlib.pyplot as plt
@@ -47,6 +48,60 @@ from torch import autograd
 from pytorch3d.structures import Meshes, Pointclouds, Volumes
 from pytorch3d.ops import sample_points_from_meshes, points_to_volumes, add_pointclouds_to_volumes
 from pytorch3d.loss import chamfer_distance
+
+
+import numpy as np
+import pyrender
+import torch
+import trimesh
+import math
+import matplotlib.pyplot as plt
+
+from pytorch3d.structures import Meshes, Pointclouds, Volumes
+from pytorch3d.ops import sample_points_from_meshes, points_to_volumes, add_pointclouds_to_volumes
+from pytorch3d.loss import chamfer_distance
+
+
+import os
+import matplotlib.pyplot as plt
+
+from pytorch3d.utils import ico_sphere
+import numpy as np
+from tqdm import tqdm
+from pytorch3d.io import load_objs_as_meshes, save_obj
+
+from pytorch3d.structures import Meshes
+
+from pytorch3d.renderer import (
+    look_at_view_transform,
+    FoVPerspectiveCameras, 
+    PointLights, 
+    DirectionalLights, 
+    Materials, 
+    RasterizationSettings, 
+    MeshRenderer, 
+    MeshRasterizer,  
+    SoftPhongShader,
+    SoftSilhouetteShader,
+    SoftPhongShader,
+    TexturesVertex,
+    Textures
+)
+
+from pytorch3d.renderer import (
+    FoVPerspectiveCameras,
+    VolumeRenderer,
+    NDCMultinomialRaysampler,
+    EmissionAbsorptionRaymarcher
+)
+
+
+from pytorch3d.loss import (
+    chamfer_distance, 
+    mesh_edge_loss, 
+    mesh_laplacian_smoothing, 
+    mesh_normal_consistency,
+)
 
 
 from pytorch3d.utils import ico_sphere
@@ -78,7 +133,7 @@ def cast_laser(origin, direction):
     return mi.TensorXf(result, shape=(len(result), 1))
 
 
-def get_cameras_and_renderer(num_views, image_size, device):    # Get a batch of viewing angles. 
+def get_cameras_and_renderer(num_views, image_size, sigma, faces_per_pixel, DEVICE):    # Get a batch of viewing angles. 
     elev = torch.linspace(170, 170, num_views)
     azim = torch.linspace(90, 270, num_views)
 
@@ -107,7 +162,7 @@ def get_cameras_and_renderer(num_views, image_size, device):    # Get a batch of
     # rasterization method is used.  Refer to docs/notes/renderer.md for an 
     # explanation of the difference between naive and coarse-to-fine rasterization. 
     raster_settings = RasterizationSettings(
-        image_size=im_size, 
+        image_size=image_size, 
         blur_radius=0.0, 
         faces_per_pixel=1, 
     )
@@ -129,7 +184,7 @@ def get_cameras_and_renderer(num_views, image_size, device):    # Get a batch of
 
 
     raster_settings_soft = RasterizationSettings(
-        image_size=im_size, 
+        image_size=image_size, 
         blur_radius=np.log(1. / 1e-4 - 1.)*sigma, 
         faces_per_pixel=faces_per_pixel, 
         perspective_correct=False, 
@@ -146,7 +201,7 @@ def get_cameras_and_renderer(num_views, image_size, device):    # Get a batch of
             lights=lights)
     )
 
-    return gt_renderer, diff_renderer, cameras
+    return renderer, renderer_textured, cameras, lights
 
 
 def visualize(mesh_a, mesh_b, device):    
@@ -344,231 +399,134 @@ def main():
                                   device=DEVICE)
     firefly_scene.randomize()
     
-    flame_key = None
+    shapemodel_key = None
     for key, value in firefly_scene.meshes.items():
-        if type(value) == Transformable.FlameShapeModel:
-            flame_key = key
+        if isinstance(value, Transformable.ShapeModel):
+            shapemodel_key = key
 
-    # Doesnt work, IDK why
-    constraint_map = LaserEstimation.generate_epipolar_constraints(global_scene, global_params, DEVICE)
-
-    # Generate random depth maps by uniformly sampling from scene parameter ranges
-    depth_maps = depth.random_depth_maps(firefly_scene, global_scene, num_maps=config.n_depthmaps)
-
-    # Given depth maps, generate probability distribution
-    variance_map = LaserEstimation.probability_distribution_from_depth_maps(depth_maps, config.variational_epsilon)
-    vm = (variance_map.cpu().numpy()*255).astype(np.uint8)
-    vm = cv2.applyColorMap(vm, cv2.COLORMAP_VIRIDIS)
-    cv2.imshow("Variance Map", vm)
-    cv2.waitKey(1)
-
-    # Final multiplication and normalization
-    final_sampling_map = variance_map * constraint_map
-    final_sampling_map /= final_sampling_map.sum()
-
-    # Gotta flip this in y direction, since apparently I can't program
-    final_sampling_map = torch.fliplr(final_sampling_map)
-    final_sampling_map = torch.flip(final_sampling_map, (0,))
-
-    # sample points for laser rays
-    chosen_points = LaserEstimation.points_from_probability_distribution(final_sampling_map, config.n_beams)
-
-    vm = variance_map.cpu().numpy()
-    cp = chosen_points.cpu().numpy()
-    cm = constraint_map.cpu().numpy()
-    if config.save_images:
-        vm = (vm*255).astype(np.uint8)
-        vm = cv2.applyColorMap(vm, cv2.COLORMAP_VIRIDIS)
-        vm.reshape(-1, 3)[cp, :] = ~vm.reshape(-1, 3)[cp, :]
-        cv2.imwrite("sampling_map.png", vm)
-        cm = cm*255
-        cv2.imwrite("constraint_map.png", cm)
-
-    # Build laser from Projector constraints
-    tex_size = torch.tensor(global_scene.sensors()[1].film().size(), device=DEVICE)
-    near_clip = global_scene.sensors()[1].near_clip()
-    far_clip = global_scene.sensors()[1].far_clip()
-    fov = global_params['PerspectiveCamera_1.x_fov']
-
-    laser_world = firefly_scene.projector.world()
-    laser_origin = laser_world[0:3, 3]
-    # Sample directions of laser beams from variance map
-    laser_dir = LaserEstimation.laser_from_ndc_points(global_scene.sensors()[0],
-                            laser_origin,
-                            depth_maps,
-                            chosen_points,
-                            device=DEVICE)
-
-
-    # Apply inverse rotation of the projector, such that we get a normalized direction
-    # The laser direction up until now is in world coordinates!
-    local_laser_dir = transforms.transform_directions(laser_dir, laser_world.inverse())
-    Laser = laser.Laser(firefly_scene.projector, local_laser_dir, fov, near_clip, far_clip)
+    Laser = LaserEstimation.initialize_laser(global_scene, global_params, firefly_scene, config, DEVICE)
     
     model = FLAME_3DCNN.Shape(in_channels=1, num_classes=1, shape_params=num_shape_params).to(DEVICE)
     model.train()
     
-    losses = Losses.Handler([
+    loss_funcs = Losses.Handler([
             #[Losses.VGGPerceptual().to(DEVICE), 0.0],
             [torch.nn.MSELoss().to(DEVICE), 1.0],
             #[torch.nn.L1Loss().to(DEVICE),  1.0]
             ])
     
-    gt_renderer, diff_renderer, cameras = get_cameras_and_renderer(num_views, global_scene.sensors()[0].film().size(), DEVICE)
+
+    gt_renderer, diff_renderer, cameras, lights = get_cameras_and_renderer(num_views, 128, sigma, 10, DEVICE)
     
     Laser._rays.requires_grad = True
     sigma.requires_grad = True
 
-    optim = torch.optim.Adam([
+    optim = torch.optim.SGD([
         {'params': model.parameters(),  'lr': config.lr_model}, 
         {'params': Laser._rays,         'lr': config.lr_laser},
         {'params': sigma,               'lr': config.lr_sigma}
         ])
+    
+    losses = {"rgb": {"weight": 1.0, "values": []},
+            "silhouette": {"weight": 1.0, "values": []},
+            "chamf": {"weight": 0.5, "values": []},
+            "shape_params": {"weight": 0.0, "values": []},
+            "scene_seg": {"weight": 1.0, "values": []},
+            }
+
     scheduler = torch.optim.lr_scheduler.PolynomialLR(optim, power=0.99, total_iters=Niter)
+    shapemodel = firefly_scene.meshes[shapemodel_key]
+    # Hacky magic number here. But we want a better L2 Loss
+    vertex_color = torch.randn(1, 5023, 3).to(DEVICE)
+    textures = Textures(verts_rgb=vertex_color)
 
 
     reduction_steps = config.sigma_reduce_end
     sigma_step = (config.sigma - config.sigma_end) / reduction_steps
-    with autograd.detect_anomaly():
-        for i in (progress_bar := tqdm(range(config.iterations))):
-            #if i % upsample_at_iter == 0 and upsampling_step + 1 != num_upsamples:
-            #    global_params['PerspectiveCamera.film.size'] = upsampling[upsampling_step]
-            #    upsampling_step += 1
-            #    global_params.update()
+    for i in (progress_bar := tqdm(range(config.iterations))):
+        if i < reduction_steps:
+            sigma = sigma - sigma_step
 
-            if i < reduction_steps:
-                sigma = sigma - sigma_step
+        with torch.no_grad():
+            vertices, _ = shapemodel.getVertexData()
+            vertices = vertices.unsqueeze(0)
+            mesh = Meshes(toMinusOneOne(toUnitCube(vertices)), 
+                        shapemodel._shape_layer.faces_tensor.unsqueeze(0), 
+                        textures)
 
-            with torch.no_grad():
-                pose_params = get_rand_params(batch_size, 6, pose_interval).to(DEVICE)
-                shape_params = get_rand_params(batch_size, num_shape_params, shape_interval).to(DEVICE)
-                expression_params = get_rand_params(batch_size, num_expression_params, expression_interval).to(DEVICE)
-                vertices, _ = flamelayer(shape_params, expression_params, pose_params)
+            target_images = gt_renderer(mesh.extend(num_views), cameras=cameras, lights=lights)
+            target_rgb = target_images[..., :3]
+            target_silhouette = target_images[..., 3]
 
-                mesh = Meshes(toMinusOneOne(toUnitCube(vertices)), 
-                            torch.from_numpy(flamelayer.faces.astype(int)).to(DEVICE).unsqueeze(0).repeat(vertices.shape[0], 1, 1), 
-                            textures)
-                
-                sample_volume = pointcloud_to_volume(
-                    sample_points_from_meshes(mesh, num_init_points), 
-                    num_voxels=num_voxels)
+        # Initialize optimizer
+        segmentation = depth.get_segmentation_from_camera(global_scene).float()
+        firefly_scene.randomize()
+        optim.zero_grad()
 
-                target_images = gt_renderer(mesh, cameras=cameras, lights=lights)
-                target_rgb = [target_images[i, ..., :3] for i in range(num_views)]
+        hit_d = cast_laser(Laser.originPerRay(), Laser.rays())
+        world_points = Laser.originPerRay() + Laser.rays() * hit_d
+        ndc_points = transforms.project_to_camera_space(global_params, world_points).squeeze()
+        sensor_size = torch.tensor(global_scene.sensors()[0].film().size(), device=DEVICE)
+        ndc_raster = rasterization.rasterize_points(ndc_points[:, 0:2], config.sigma, sensor_size)
+        ndc_tex = rasterization.softor(ndc_raster)
+        sample_volume = pointcloud_to_volume(world_points.unsqueeze(0), num_voxels=num_voxels)
 
-                target_cameras = cameras   
-                target_silhouette = [target_images[i, ..., 3] for i in range(num_views)]
+        estimated_shape_params = model(sample_volume)
+        pred_vertices, _ = shapemodel._shape_layer(estimated_shape_params, shapemodel.expressionParams(), shapemodel.poseParams())
+       
 
-            # Initialize optimizer
-            optim.zero_grad()
-            estimated_shape_params = model(sample_volume)
-            pred_vertices, _ = flamelayer(estimated_shape_params, expression_params, pose_params)
-            pred_vertices = toMinusOneOne(toUnitCube(pred_vertices))
-            pred_mesh = Meshes(pred_vertices, torch.from_numpy(flamelayer.faces.astype(int)).to(DEVICE).unsqueeze(0).repeat(pred_vertices.shape[0], 1, 1), textures)
-            
-            # Losses to smooth /regularize the mesh shape
-            loss = {k: torch.tensor(0.0, device=DEVICE) for k in losses}
+        pred_vertices = toMinusOneOne(toUnitCube(pred_vertices))
+        pred_mesh = Meshes(pred_vertices, shapemodel._shape_layer.faces_tensor.unsqueeze(0), textures).extend(num_views)
+        
+        # Losses to smooth /regularize the mesh shape
+        loss = {k: torch.tensor(0.0, device=DEVICE) for k in losses}
+        images_predicted = diff_renderer(pred_mesh, cameras=cameras, lights=lights)
 
-            # Randomly select two views to optimize over in this iteration.  Compared
-            # to using just one view, this helps resolve ambiguities between updating
-            # mesh shape vs. updating mesh texture
-            for j in np.random.permutation(num_views).tolist()[:num_views_per_iteration]:
-                
-                images_predicted = renderer_textured(pred_mesh, cameras=target_cameras[j], lights=lights)
-                #silhouette_predicted = renderer_silhouette(pred_mesh, cameras=target_cameras[j], lights=lights)
-                
-                # Squared L2 distance between the predicted silhouette and the target 
-                # silhouette from our dataset
-                predicted_silhouette = images_predicted[..., 3]
-                loss_silhouette = ((predicted_silhouette - target_silhouette[j]) ** 2).mean()
-                loss["silhouette"] += loss_silhouette / num_views_per_iteration
-                
-                # Squared L2 distance between the predicted RGB image and the target 
-                # image from our dataset
-                predicted_rgb = images_predicted[..., :3]
-                loss_rgb = ((predicted_rgb - target_rgb[j]) ** 2).mean()
-                loss["rgb"] += loss_rgb / num_views_per_iteration
+        loss_silhouette = loss_funcs(images_predicted[..., 3], target_silhouette)
+        loss["silhouette"] += loss_silhouette / num_views_per_iteration
+        
+        loss_rgb = loss_funcs(images_predicted[..., :3], target_rgb)
+        loss["rgb"] += loss_rgb / num_views_per_iteration
 
-                loss_verts = chamfer_distance(mesh.verts_padded(), pred_vertices)[0]
-                loss["chamf"] += loss_verts
+        loss_seg = loss_funcs(segmentation, ndc_tex)
+        loss["scene_seg"] += loss_seg
 
-                loss_shape = torch.nn.L1Loss()(estimated_shape_params, shape_params) / num_shape_params
-                loss["shape_params"] += loss_shape
+        loss_verts = chamfer_distance(mesh.verts_padded(), pred_vertices)[0]
+        loss["chamf"] += loss_verts
 
-            
-            # Weighted sum of the losses
-            sum_loss = torch.tensor(0.0, device=DEVICE)
-            sum_loss.requires_grad = True
+        loss_shape = torch.nn.L1Loss()(estimated_shape_params, shapemodel.shapeParams()) / num_shape_params
+        loss["shape_params"] += loss_shape
 
-            for k, l in loss.items():
-                sum_loss = sum_loss + l * losses[k]["weight"]
-                losses[k]["values"].append(float(l.detach().cpu()))
-            
-            # Print the losses
-            loop.set_description("total_loss = %.6f" % sum_loss)
+        
+        # Weighted sum of the losses
+        sum_loss = torch.tensor(0.0, device=DEVICE)
+        sum_loss.requires_grad = True
 
+        for k, l in loss.items():
+            sum_loss = sum_loss + l * losses[k]["weight"]
+            losses[k]["values"].append(float(l.detach().cpu()))
+        
+        # Print the losses
+        progress_bar.set_description("total_loss = %.6f" % sum_loss)
 
-            sum_loss.backward()
-            optim.step()
-            #scheduler.step()
+        sum_loss.backward()
+        optim.step()
+        scheduler.step()
+        print(Laser._rays[0])
+        with torch.no_grad():
+            Laser.randomize_out_of_bounds()
+            Laser.normalize_rays()
 
-            progress_bar.set_description("Loss: {0:.4f}, Sigma: {1:.4f}".format(loss.item(), sigma.detach().cpu().numpy()[0]))
-            with torch.no_grad():
-                Laser.randomize_out_of_bounds()
-                Laser.normalize_rays()
+            ndc_points = transforms.project_to_camera_space(global_params, world_points).squeeze()
+            sensor_size = torch.tensor(global_scene.sensors()[0].film().size(), device=DEVICE)
+            sparse_depth = rasterization.rasterize_depth(ndc_points[:, 0:2], ndc_points[:, 2:3], config.sigma, sensor_size)
+            sparse_depth = rasterization.softor(sparse_depth)
+            sparse_depth = torch.clamp(sparse_depth, 0, 1)
+            sparse_depth = sparse_depth.detach().cpu().numpy() * 255
+            sparse_depth = sparse_depth.astype(np.uint8)
 
-                if config.visualize:
-                    rendering = torch.clamp(rendered_image, 0, 1).detach().cpu().numpy()
-                    #rendering = torch.clamp(sparse_depth, 0, 1).sum(dim=0).unsqueeze(-1).repeat(1, 1, 3).detach().cpu().numpy()
-                    texture = texture_init.unsqueeze(-1).repeat(1, 1, 3).detach().cpu().numpy()
-                    #epipolar_lines = rasterization.softor(lines).unsqueeze(-1).repeat(1, 1, 3).detach().cpu().numpy()
-
-                    concat_im = np.hstack([rendering, texture])
-
-                    scale_percent = config.upscale # percent of original size
-                    width = int(concat_im.shape[1] * scale_percent / 100)
-                    height = int(concat_im.shape[0] * scale_percent / 100)
-                    dim = (width, height)
-
-                    concat_im = cv2.resize(concat_im, dim, interpolation=cv2.INTER_AREA)
-                    cv2.imshow("Predicted Depth Map", concat_im)
-                    cv2.waitKey(1)
-                    if config.save_images:
-                        cv2.imwrite("ims/{0:05d}.png".format(i), (concat_im*255).astype(np.uint8))
-
-
-                    if i % 50 == 0:
-                        radian = np.pi / 180.0
-                        yaw_mat   = math.getYawTransform(90.0*radian, DEVICE)
-                        pitch_mat = math.getPitchTransform(0.0, DEVICE)
-                        roll_mat  = math.getRollTransform(0.0, DEVICE)
-
-                        transform = transforms.toMat4x4(yaw_mat @ pitch_mat @ roll_mat)
-                        transform_a = transform.clone()
-                        transform_b = transform.clone()
-                        transform_a[1, 3] = -0.15
-                        transform_b[1, 3] = 0.15
-
-
-                        # Visualize Landmarks
-                        # This visualises the static landmarks and the pose dependent dynamic landmarks used for RingNet project
-                        vis_vertices = predicted_vertices
-                        #print(vis_vertices[0])
-                        vertex_colors = np.ones([vis_vertices.shape[0], 4]) * [0.3, 0.3, 0.3, 1.0]
-
-                        pred_tri_mesh = trimesh.Trimesh(firefly_scene.meshes[flame_key].getVertexData()[0].detach().cpu().numpy(), model._flame.faces, vertex_colors=vertex_colors)
-                        pred_tri_mesh.apply_transform(transform_a.detach().cpu().numpy() )
-                        pred_mesh = pyrender.Mesh.from_trimesh(pred_tri_mesh)
-                        
-                        tri_mesh = trimesh.Trimesh(vis_vertices.detach().cpu().numpy().squeeze(), model._flame.faces, vertex_colors=vertex_colors)
-                        tri_mesh.apply_transform(transform_b.detach().cpu().numpy() @ transforms.toMat4x4(math.getXTransform(np.pi*0.5, DEVICE)).detach().cpu().numpy())
-                        mesh = pyrender.Mesh.from_trimesh(tri_mesh)
-
-                        scene = pyrender.Scene()
-                        scene.add(mesh)
-                        scene.add(pred_mesh)
-
-                        pyrender.Viewer(scene, use_raymond_lighting=True, viewport_size=[1920, 1080])
+            cv2.imshow("Points", sparse_depth)
+            cv2.waitKey(1)
 
     printer.Printer.OKG("Optimization done. Initiating post-processing.")
     
