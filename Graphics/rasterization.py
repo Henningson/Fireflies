@@ -1,6 +1,7 @@
 import torch
 import matplotlib.pyplot as plt
 
+torch.manual_seed(0)
 
 # We assume points to be in NDC [-1, 1]
 def rasterize_points(points: torch.tensor, sigma: float, texture_size: torch.tensor, device: torch.cuda.device = torch.device("cuda")) -> torch.tensor:
@@ -47,31 +48,6 @@ def rasterize_points_in_non_ndc(points: torch.tensor, sigma: float, texture_size
 
     return point_distances
 
-
-def memory_efficient_pointrasterization_softor(points: torch.tensor, sigma: float, texture_size: torch.tensor, device: torch.cuda.device = torch.device("cuda")) -> torch.tensor:
-    raster_image = torch.ones(texture_size.tolist(), device=device)
-    for i in range(points.shape[0]):
-        x, y = torch.meshgrid(torch.arange(0, texture_size[1], device=device), torch.arange(0, texture_size[0], device=device), indexing='ij')
-        y_dist = y - points[i, 0:1]
-        x_dist = x - points[i, 1:2]
-        point_distances = (y_dist*y_dist + x_dist*x_dist).sqrt()
-        point_distances = torch.exp(-torch.pow(point_distances, 2) / (sigma * sigma))
-        raster_image = (1 - raster_image) * raster_image
-
-    return raster_image
-
-
-def memory_efficient_pointrasterization_sum(points: torch.tensor, sigma: float, texture_size: torch.tensor, device: torch.cuda.device = torch.device("cuda")) -> torch.tensor:
-    raster_image = torch.zeros(texture_size.tolist(), device=device)
-    for i in range(points.shape[0]):
-        x, y = torch.meshgrid(torch.arange(0, texture_size[1], device=device), torch.arange(0, texture_size[0], device=device), indexing='ij')
-        y_dist = y - points[i, 0:1]
-        x_dist = x - points[i, 1:2]
-        point_distances = (y_dist*y_dist + x_dist*x_dist).sqrt()
-        point_distances = torch.exp(-torch.pow(point_distances, 2) / (sigma * sigma))
-        raster_image = raster_image + point_distances
-
-    return raster_image
 
 # We assume points to be in NDC [-1, 1]
 def rasterize_depth(points: torch.tensor, depth_vals: torch.tensor, sigma: float, texture_size: torch.tensor, device: torch.cuda.device = torch.device("cuda")) -> torch.tensor:
@@ -154,7 +130,12 @@ def softor(texture: torch.tensor, dim=0, keepdim: bool = False) -> torch.tensor:
     return 1 - torch.prod(1 - texture, dim=dim, keepdim=keepdim)
 
 
-def test_point_reg():
+def sum(texture: torch.tensor, dim=0, keepdim: bool = False) -> torch.tensor:
+    return torch.sum(texture, dim=dim, keepdim=keepdim)
+
+
+
+def test_point_reg(reduce_overlap: bool = True):
     import cv2
     import numpy as np
     from tqdm import tqdm
@@ -165,7 +146,7 @@ def test_point_reg():
     
     points = (torch.rand([500, 2], device=device) - 0.5) * 2.0
     points.requires_grad = True
-    sigma = torch.tensor([100.0], device=device)
+    sigma = torch.tensor([10.0], device=device)
     texture_size = torch.tensor([512, 512], device=device)
     loss_func = torch.nn.L1Loss()
 
@@ -184,15 +165,19 @@ def test_point_reg():
         softored = softor(rasterized_points)
         summed = rasterized_points.sum(dim=0)
 
-        loss = -loss_func(softored, summed)
+        loss = loss_func(softored, summed) if reduce_overlap else -loss_func(softored, summed)
         loss.backward()
         optim.step()
 
         with torch.no_grad():
-            points[points > 1.0] = 1.0
-            points[points < -1.0] = -1.0
+            points[points >= 1.0] = 0.999
+            points[points <= -1.0] = -0.999
             np_points = cv2.applyColorMap((softored.detach().cpu().numpy()*255).astype(np.uint8), cv2.COLORMAP_VIRIDIS)
             images.append(np_points[:, :, [2, 1, 0]])
+
+            if i == 0 or i == opt_steps - 1:
+                cv2.imwrite("assets/point_reduced_overlap{0}.png".format(i) if reduce_overlap else "assets/point_increased_overlap{0}.png".format(i), np_points)
+            
             cv2.imshow("Optim Lines", np_points)
             cv2.waitKey(1)
             #lines.requires_grad = True
@@ -208,42 +193,66 @@ def test_line_reg():
     import imageio
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
+
+    # We define line as: 
+        # P0: x + -t*d
+        # P1: x +  t*d
+        # Where d is the direction, x the location vector and t half its length.
+    # We want to optimize the location vector x of all lines, such that they do not overlap.
+
+    num_lines = 50
+    sigma = 10.0
+    opt_steps = 250
+
+    t = torch.tensor([0.5], device=device)
+    direction = torch.rand([2], device=device).unsqueeze(0)
+    direction = direction / direction.norm()
     
-    lines = (torch.rand([50, 2, 2], device=device) - 0.5) * 2.0
-    lines.requires_grad = True
-    sigma = torch.tensor([200.0], device=device)
+    location_vector = (torch.rand([num_lines, 2], device=device) - 0.5) * 2.0 / 10.0 # Every line should be roughly in the middle of our frame
+    location_vector.requires_grad = True
+
+    sigma = torch.tensor([sigma], device=device)
     texture_size = torch.tensor([512, 512], device=device)
     loss_func = torch.nn.L1Loss()
 
-    opt_steps = 1000
 
     optim = torch.optim.Adam([
-        {'params': lines,  'lr': 0.005},
-        {'params': sigma,  'lr': 1.0},
+        {'params': location_vector,  'lr': 0.005}
         ])
     
     images = []
     for i in tqdm(range(opt_steps)):
         optim.zero_grad()
 
+        p0 = location_vector + t*direction
+        p1 = location_vector - t*direction
+        lines = torch.concat([p0.unsqueeze(-1), p1.unsqueeze(-1)], dim=-1).transpose(1, 2)
+
         rasterized_lines = rasterize_lines(lines, sigma, texture_size)
 
         softored = softor(rasterized_lines)
         summed = rasterized_lines.sum(dim=0)
 
-        loss = -loss_func(softored, summed)
+        loss = loss_func(softored, summed)
         loss.backward()
         optim.step()
 
         with torch.no_grad():
-            lines[lines > 1.0] = 1.0
-            lines[lines < -1.0] = torch.rand(1, device=device)
+            location_vector[p0 > 1.0] -= 0.01
+            location_vector[p0 < -1.0] += 0.01
+            location_vector[p1 > 1.0] -= 0.01
+            location_vector[p1 < -1.0] += 0.01
             np_lines = cv2.applyColorMap((softored.detach().cpu().numpy()*255).astype(np.uint8), cv2.COLORMAP_VIRIDIS)
+
+            if i == 0 or i == opt_steps - 1:
+                cv2.imwrite("assets/line_reduced_overlap{0}.png".format(i), np_lines)
+
+
             images.append(np_lines[:, :, [2, 1, 0]])
             cv2.imshow("Optim Lines", np_lines)
             cv2.waitKey(1)
             #lines.requires_grad = True
-    #imageio.v3.imwrite("line_regularization.mp4", np.stack(images, axis=0), fps=25)
+    imageio.v3.imwrite("assets/line_regularization.mp4", np.stack(images, axis=0), fps=25)
     #optimize("line_regularization.gif")
 
 
@@ -317,6 +326,7 @@ def test_square_reg():
             cv2.waitKey(1)
 
 if __name__ == "__main__":
-    test_point_reg()
-    #test_line_reg()
+    #test_point_reg(reduce_overlap=True)
+    #test_point_reg(reduce_overlap=False)
+    test_line_reg()
     #main()

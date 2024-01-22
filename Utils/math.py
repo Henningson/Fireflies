@@ -42,6 +42,8 @@ def getRollTransform(alpha: float, _device: torch.cuda.device) -> torch.tensor:
     return rotX
 
 
+def vector_dot(A: torch.tensor, B: torch.tensor) -> torch.tensor:
+    return torch.sum(A * B, dim=-1)
 
 
 def test():

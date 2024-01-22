@@ -5,6 +5,7 @@ import numpy as np
 import math
 import Graphics.rasterization as rasterization
 import Utils.transforms as transforms
+import Utils.bridson as bridson
 import Objects.Transformable as Transformable
 import Objects.Camera as Camera
 import yaml
@@ -15,6 +16,7 @@ from typing import List
 
 class Laser(Camera.Camera):
     # Static Convenience Function
+    @staticmethod
     def generate_uniform_rays(intra_ray_angle: float, num_beams_x: int, num_beams_y:int, device: torch.cuda.device = torch.device("cuda")) -> torch.tensor:
         laserRays = torch.zeros((num_beams_y*num_beams_x, 3), device=device)
 
@@ -26,7 +28,39 @@ class Laser(Camera.Camera):
                     1.0])
 
         return laserRays / torch.linalg.norm(laserRays, dim=-1, keepdims=True)
+    
+    @staticmethod
+    def generate_random_rays(num_beams: int, intrinsic_matrix: torch.tensor, device: torch.cuda.device = torch.device("cuda")) -> torch.tensor:
+        
+        # Random points and move into NDC
+        spawned_points = torch.rand([num_beams, 3], device=device) * 2.0 - 1.0
 
+        # Set Z to 1
+        spawned_points[:, 2] = 1.0
+
+        # Project to world
+        rays = transforms.transform_points(points, intrinsic_matrix.inverse())
+        return rays / torch.linalg.norm(rays, dim=-1, keepdims=True)
+    
+    @staticmethod
+    def generate_blue_noise_rays(image_size_x: int, image_size_y: int, num_beams:int, intrinsic_matrix: torch.tensor, device: torch.cuda.device = torch.device("cuda")) -> torch.tensor:
+
+        # We want to know the radius of the poisson disk so that we get roughly N beams
+        # 
+        # So we say N < (X*Y) / PI*r*r <=> sqrt(X*Y / PI*N) ~ r
+        # 
+
+        poisson_radius = math.sqrt((image_size_x * image_size_y) / (math.pi * num_beams))
+        poisson_samples = bridson.poisson_disc_samples(image_size_x, image_size_y, poisson_radius)
+        poisson_samples = poisson_samples[0:num_beams]
+
+        # From image space to 0 1
+        poisson_samples /= np.array([image_size_x, image_size_y])
+
+        # From 0 to 1 to NDC
+        poisson_samples = (poisson_samples - 0.5) * 2.0
+
+        return None
 
     def __init__(self, 
                  transformable: Transformable.Transformable, 
@@ -71,6 +105,9 @@ class Laser(Camera.Camera):
         self._rays = self.normalize(rand_rays)
 
 
+    def initPoissonDiskSamples(self, width, height, radius):
+        return None
+
     def clamp_to_fov(self, clamp_val: float = 0.95, epsilon: float = 0.001) -> None:
         # TODO: Check, if laser beam falls out of fov. If it does, clamp it back.
         # If randomize is set, spawn a new random laser inside NDC.
@@ -89,21 +126,44 @@ class Laser(Camera.Camera):
         self._rays[:] = self.normalize(clamped_rays)
 
 
-    def randomize_out_of_bounds(self) -> None:
+    def randomize_laser_out_of_bounds(self) -> None:
         # TODO: Check, if laser beam falls out of fov. If it does, spawn a new randomly in NDC in (-1, 1).
         new_rays = self._rays.clone()
+
+        # No need to transform as rays are in laser space anyway
         ndc_coords = transforms.transform_points(new_rays, self._perspective)
         xy_coords = ndc_coords[:, 0:2]
-        out_of_bounds_indices = ((xy_coords > 1.0) | (xy_coords < -1.0)).any(dim=1)
+        out_of_bounds_indices = ((xy_coords >= 1.0) | (xy_coords <= -1.0)).any(dim=1)
         
         out_of_bounds_points = ndc_coords[out_of_bounds_indices]
         
         if out_of_bounds_points.nelement() == 0:
             return 0
         
-        out_of_bounds_points = torch.rand(out_of_bounds_points.shape, device=self.device) * 2.0 - 1.0
+        new_ray_point = torch.rand(out_of_bounds_points.shape, device=self.device) * 2.0 - 1.0
+        new_ray_point[:, 2] = 1.0
+
+        clamped_rays = self.projectNDCPointsToWorld(new_ray_point)
+        new_rays[out_of_bounds_indices] = clamped_rays
+        new_rays = self.normalize(new_rays)
+
+
+        self._rays[:] = new_rays
+
+
+    def randomize_camera_out_of_bounds(self, ndc_coords) -> None:
+        new_rays = self._rays.clone()
+        xy_coords = ndc_coords[:, 0:2]
+        out_of_bounds_indices = ((xy_coords >= 1.0) | (xy_coords <= -1.0)).any(dim=1)
+        out_of_bounds_points = ndc_coords[out_of_bounds_indices]
         
-        clamped_rays = self.projectNDCPointsToWorld(out_of_bounds_points)
+        if out_of_bounds_points.nelement() == 0:
+            return 0
+        
+        new_ray_point = torch.rand(out_of_bounds_points.shape, device=self.device) * 2.0 - 1.0
+        new_ray_point[:, 2] = 1.0
+        
+        clamped_rays = self.projectNDCPointsToWorld(new_ray_point)
         new_rays[out_of_bounds_indices] = clamped_rays
         new_rays = self.normalize(new_rays)
 
@@ -432,6 +492,8 @@ if __name__ == "__main__":
     import Graphics.rasterization as rasterization
     import matplotlib.pyplot as plt
     
+    p = Laser.generate_blue_noise_rays(512, 512, 100, None, "cpu")
+
 
     laser = Laser(20, 20, 0.5, torch.eye(4), torch.tensor([0.0, 0.0, 0.0]), max_fov=9)
     laser.initRandomRays()

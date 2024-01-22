@@ -14,6 +14,7 @@ import Objects.laser as laser
 from scipy.spatial import ConvexHull
 import numpy as np
 import matplotlib.pyplot as plt
+import Utils.math as math
 
 
 def probability_distribution_from_depth_maps(
@@ -65,13 +66,13 @@ def get_camera_direction(sensor, device: torch.cuda.device) -> torch.tensor:
 
 
 def get_camera_frustum(sensor, device: torch.cuda.device) -> torch.tensor:
-    film = sensor.film()
+    #film = sensor.film()
     sampler = sensor.sampler()
-    film_size = film.size()
-    total_samples = 4
+    #film_size = film.size()
+    #total_samples = 4
 
-    if sampler.wavefront_size() != total_samples:
-        sampler.seed(0, total_samples)
+    #if sampler.wavefront_size() != total_samples:
+    #    sampler.seed(0, total_samples)
 
     # Enumerate discrete sample & pixel indices, and uniformly sample
     # positions within each pixel.
@@ -90,6 +91,32 @@ def get_camera_frustum(sensor, device: torch.cuda.device) -> torch.tensor:
         sample3=0
     )
 
+    ray_origins = rays.o.torch()
+    ray_directions = rays.d.torch()
+
+    #x_transform = transforms.toMat4x4(math.getXTransform(np.pi*0.5, ray_origins.device))
+    #ray_origins = transforms.transform_points(ray_origins, x_transform)
+    #ray_directions = transforms.transform_directions(ray_directions, x_transform)
+
+
+    return ray_origins, ray_directions
+
+
+
+def getRayFromSensor(sensor, ray_coordinate_in_ndc):
+    sampler = sensor.sampler()
+
+    #scale = mi.Vector2f(1.0 / film_size[0], 1.0 / film_size[1])
+    pos = mi.Vector2f(mi.Float([ray_coordinate_in_ndc[0]]), mi.Float([ray_coordinate_in_ndc[1]]))
+
+    # Sample rays starting from the camera sensor
+    rays, weights = sensor.sample_ray(
+        time=0,
+        sample1=sampler.next_1d(),
+        sample2=pos,
+        sample3=0
+    )
+
     return rays.o.torch(), rays.d.torch()
 
 
@@ -98,6 +125,7 @@ def create_rays(sensor, points) -> torch.tensor:
     sampler = sensor.sampler()
     film_size = film.size()
     total_samples = points.shape[0]
+
 
     if sampler.wavefront_size() != total_samples:
         sampler.seed(0, total_samples)
@@ -160,6 +188,7 @@ def draw_lines(ax, rayOrigin, rayDirection, ray_length=1.0, color='g'):
 
 
 def generate_epipolar_constraints(scene, params, device):
+
     camera_sensor = scene.sensors()[0]
 
     projector_sensor = scene.sensors()[1]
@@ -169,17 +198,17 @@ def generate_epipolar_constraints(scene, params, device):
 
     near_clip = params['PerspectiveCamera_1.near_clip']
     far_clip = params['PerspectiveCamera_1.far_clip']
-    steps = 5
-    delta = (far_clip - near_clip / steps)
+    #steps = 1
+    #delta = (far_clip - near_clip / steps)
 
-    projection_points = [ray_origins + (params['PerspectiveCamera_1.near_clip'] + delta*i) * ray_directions for i in range(steps)]
-    projection_points = torch.vstack(projection_points)
+    projection_points = ray_origins + far_clip * ray_directions
     epipolar_points   = projection_points
 
     K = utils.build_projection_matrix(params['PerspectiveCamera.x_fov'], params['PerspectiveCamera.near_clip'], params['PerspectiveCamera.far_clip'])
-    CAMERA_TO_WORLD = params["PerspectiveCamera.to_world"].matrix.torch()[0]
+    CAMERA_WORLD = params["PerspectiveCamera.to_world"].matrix.torch()[0]
+    #CAMERA_WORLD[0:3, 0:3] = CAMERA_WORLD[0:3, 0:3] @ math.getYTransform(np.pi, CAMERA_WORLD.device)
 
-    epipolar_points = transforms.transform_points(epipolar_points, CAMERA_TO_WORLD.inverse())
+    epipolar_points = transforms.transform_points(epipolar_points, CAMERA_WORLD.inverse())
     epipolar_points = transforms.transform_points(epipolar_points, K)[:, 0:2]
 
     epi_points_np = epipolar_points.detach().cpu().numpy()
@@ -200,7 +229,7 @@ def generate_epipolar_constraints(scene, params, device):
     
     epi_points_np = line_segments.cpu().numpy()
     epi_points_np = (epi_points_np + 1.0) * 0.5
-    epi_points_np = epi_points_np[:, [1, 0]]
+    #epi_points_np = epi_points_np[:, [1, 0]]
     epi_points_np *= camera_size
 
 
@@ -210,6 +239,7 @@ def generate_epipolar_constraints(scene, params, device):
     cv2.waitKey(0)
     
     return torch.from_numpy(image).to(device)
+
 
 
 def initialize_laser(mitsuba_scene, mitsuba_params, firefly_scene, config, device):

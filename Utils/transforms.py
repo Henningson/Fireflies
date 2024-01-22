@@ -86,3 +86,18 @@ def project_to_camera_space(params, points) -> torch.tensor:
     view_space_points = transform_points(points, camera_to_world.inverse())
     ndc_points = transform_points(view_space_points, perspective)
     return ndc_points
+
+
+def project_to_projector_space(params, points) -> torch.tensor:
+    x_fov = params['PerspectiveCamera_1.x_fov']
+    near_clip = params['PerspectiveCamera_1.near_clip']
+    far_clip = params['PerspectiveCamera_1.far_clip']
+
+    # TODO: Refactor
+    perspective = utils.build_projection_matrix(x_fov, near_clip, far_clip).to('cuda')
+    
+    camera_to_world = params["PerspectiveCamera_1.to_world"].matrix.torch()
+
+    view_space_points = transform_points(points, camera_to_world.inverse())
+    ndc_points = transform_points(view_space_points, perspective)
+    return ndc_points

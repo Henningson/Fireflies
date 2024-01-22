@@ -13,6 +13,7 @@ import Objects.Transformable as Transformable
 import Utils.transforms as transforms
 import numpy as np
 import Utils.math as math
+import Graphics.LaserEstimation as LaserEstimation
 
 class Scene:
     def __init__(self, 
@@ -208,6 +209,7 @@ class Scene:
         # TODO: Is there a better way here?
         # Couldn't find a better way to get this torch tensor into mitsuba Transform4f
         self.scene_params[key + ".to_world"] = mi.Transform4f(worldMatrix.tolist())
+        self.scene_params["PerspectiveCamera_1.to_world"] = mi.Transform4f(worldMatrix.tolist())
 
 
     def updateLights(self) -> None:
@@ -253,7 +255,7 @@ if __name__ == "__main__":
     import matplotlib.pyplot as plt
     import cv2
 
-    base_path = "scenes/FLAME/"
+    base_path = "scenes/TestsceneNew/"
 
     mitsuba_scene = mi.load_file(os.path.join(base_path, "scene.xml"))
     mitsuba_params = mi.traverse(mitsuba_scene)
@@ -266,12 +268,13 @@ if __name__ == "__main__":
     render = mi.render(mitsuba_scene, spp=20)
     import matplotlib.pyplot as plt
 
-    plt.axis("off")
-    plt.imshow(render ** (1.0 / 2.2))
-    plt.show()
+    #plt.axis("off")
+    #plt.imshow(render ** (1.0 / 2.2))
+    #plt.show()
 
     firefly_scene = Scene(mitsuba_params, base_path)
 
+    #constraint_map = LaserEstimation.generate_epipolar_constraints(mitsuba_scene, mitsuba_params, "cuda")
 
 
     for i in tqdm(range(100000)):
@@ -279,6 +282,7 @@ if __name__ == "__main__":
         render = mi.render(mitsuba_scene, spp=10)
         render = torch.clamp(render.torch(), 0, 1)[:, :, [2, 1, 0]].cpu().numpy()
         cv2.imshow("Render.png", render)
+        constraint_map = LaserEstimation.generate_epipolar_constraints(mitsuba_scene, mitsuba_params, "cuda")
         cv2.waitKey(1)
 
  

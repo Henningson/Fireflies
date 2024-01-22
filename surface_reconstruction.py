@@ -19,7 +19,7 @@ import Graphics.Firefly as Firefly
 import Graphics.LaserEstimation as LaserEstimation
 import Graphics.depth as depth
 import Utils.transforms as transforms
-import Utils.math as math
+import Utils.math as utils_math
 import Objects.laser as laser
 import Objects.Transformable as Transformable
 
@@ -108,6 +108,11 @@ from pytorch3d.utils import ico_sphere
 import numpy as np
 from tqdm import tqdm
 from pytorch3d.io import load_objs_as_meshes, save_obj
+
+import scipy
+import pytorch3d.loss
+import pytorch3d.ops
+import pytorch3d.structures
 
 
 
@@ -405,58 +410,40 @@ def main():
             shapemodel_key = key
 
     Laser = LaserEstimation.initialize_laser(global_scene, global_params, firefly_scene, config, DEVICE)
-    
-    model = FLAME_3DCNN.Shape(in_channels=1, num_classes=1, shape_params=num_shape_params).to(DEVICE)
-    model.train()
-    
-    loss_funcs = Losses.Handler([
-            #[Losses.VGGPerceptual().to(DEVICE), 0.0],
-            [torch.nn.MSELoss().to(DEVICE), 1.0],
-            #[torch.nn.L1Loss().to(DEVICE),  1.0]
-            ])
-    
+    #Laser.randomize_out_of_bounds()
+    #Laser.normalize_rays()
 
-    gt_renderer, diff_renderer, cameras, lights = get_cameras_and_renderer(num_views, 128, sigma, 10, DEVICE)
-    
+    loss_funcs = Losses.Handler([
+            [torch.nn.MSELoss().to(DEVICE), 1.0]
+            ])
+
     Laser._rays.requires_grad = True
     sigma.requires_grad = True
 
     optim = torch.optim.SGD([
-        {'params': model.parameters(),  'lr': config.lr_model}, 
-        {'params': Laser._rays,         'lr': config.lr_laser},
-        {'params': sigma,               'lr': config.lr_sigma}
+        {'params': Laser._rays,         'lr': config.lr_laser * 10}
         ])
     
-    losses = {"rgb": {"weight": 1.0, "values": []},
-            "silhouette": {"weight": 1.0, "values": []},
-            "chamf": {"weight": 0.5, "values": []},
-            "shape_params": {"weight": 0.0, "values": []},
-            "scene_seg": {"weight": 0.2, "values": []},
-            }
 
     scheduler = torch.optim.lr_scheduler.PolynomialLR(optim, power=0.99, total_iters=Niter)
     shapemodel = firefly_scene.meshes[shapemodel_key]
     # Hacky magic number here. But we want a better L2 Loss
     vertex_color = torch.randn(1, 5023, 3).to(DEVICE)
-    textures = Textures(verts_rgb=vertex_color)
 
-
-    reduction_steps = config.sigma_reduce_end
-    sigma_step = (config.sigma - config.sigma_end) / reduction_steps
     for i in (progress_bar := tqdm(range(config.iterations))):
-        if i < reduction_steps:
-            sigma = sigma - sigma_step
-
         with torch.no_grad():
-            vertices, _ = shapemodel.getVertexData()
+            vertices, faces = shapemodel.getVertexData()
             vertices = vertices.unsqueeze(0)
-            mesh = Meshes(toMinusOneOne(toUnitCube(vertices)), 
-                        shapemodel._shape_layer.faces_tensor.unsqueeze(0), 
-                        textures)
+            faces = shapemodel._shape_layer.faces_tensor
+            mesh = Meshes(vertices, faces.unsqueeze(0))
+            
+            face_normals = mesh.faces_normals_packed()
+            _, camera_direction = LaserEstimation.getRayFromSensor(global_scene.sensors()[0], [0.0, 0.0])
+            backface_culled = utils_math.vector_dot(face_normals, camera_direction) >= 0
 
-            target_images = gt_renderer(mesh.extend(num_views), cameras=cameras, lights=lights)
-            target_rgb = target_images[..., :3]
-            target_silhouette = target_images[..., 3]
+            backface_culled_faces = faces[backface_culled]
+            mesh = Meshes(vertices, backface_culled_faces.unsqueeze(0))
+            gt_pointcloud = pytorch3d.ops.sample_points_from_meshes(mesh)
 
         # Initialize optimizer
         segmentation = depth.get_segmentation_from_camera(global_scene).float()
@@ -468,66 +455,76 @@ def main():
         world_points = Laser.originPerRay() + Laser.rays() * hit_d
         ndc_points = transforms.project_to_camera_space(global_params, world_points).squeeze()
 
+        #ndc_points = ndc_points[~(ndc_points[:, 0:2] < -1).any(dim=-1)]
+        #ndc_points = ndc_points[~(ndc_points[:, 0:2] > 1).any(dim=-1)]
+
+        # Remove points that do not lie inside the image space, we do not want to trace these.
+        out_of_bounds_indices = ~((ndc_points[:, 0:2] >= 1.0) | (ndc_points[:, 0:2] <= -1.0)).any(dim=1)
+        ndc_points = ndc_points[out_of_bounds_indices]
+
         # We should remove points, that do not fall into the object itself here.
+
         image_space_points = (ndc_points[:, 0:2] * 0.5 + 0.5) * sensor_size
         quantized_indices = image_space_points.floor().int()
+        
+        if quantized_indices.max() == 269:
+            a = 127498
+        
+
+
         object_hits = segmentation[quantized_indices[:, 1], quantized_indices[:, 0]].nonzero().squeeze()
         object_nonhits = (segmentation[quantized_indices[:, 1], quantized_indices[:, 0]] == 0).nonzero().squeeze()
-        world_points = world_points[object_hits]
 
-        ndc_raster = rasterization.rasterize_points(ndc_points[:, 0:2], config.sigma, sensor_size)
-        ndc_tex = rasterization.softor(ndc_raster)
-        sample_volume = pointcloud_to_volume(world_points.unsqueeze(0), num_voxels=num_voxels)
+        filtered_world_points = world_points[object_hits]
+        filtered_ndc_points = ndc_points[object_hits]
 
-        estimated_shape_params = model(sample_volume)
-        pred_vertices, _ = shapemodel._shape_layer(estimated_shape_params, shapemodel.expressionParams(), shapemodel.poseParams())
-       
+        non_hitting_ndc_points = ndc_points[object_nonhits][:, 0:2]
 
-        pred_vertices = toMinusOneOne(toUnitCube(pred_vertices))
-        pred_mesh = Meshes(pred_vertices, shapemodel._shape_layer.faces_tensor.unsqueeze(0), textures).extend(num_views)
-        
-        # Losses to smooth /regularize the mesh shape
-        loss = {k: torch.tensor(0.0, device=DEVICE) for k in losses}
-        images_predicted = diff_renderer(pred_mesh, cameras=cameras, lights=lights)
 
-        loss_silhouette = loss_funcs(images_predicted[..., 3], target_silhouette)
-        loss["silhouette"] += loss_silhouette / num_views_per_iteration
-        
-        loss_rgb = loss_funcs(images_predicted[..., :3], target_rgb)
-        loss["rgb"] += loss_rgb / num_views_per_iteration
+        # The rest of the points should be moved into the region of interest, with a specific gradient and a bigger sigma
+        # TODO: Implement me
 
-        loss_seg = loss_funcs(segmentation, ndc_tex)
-        loss["scene_seg"] += loss_seg
+        with torch.no_grad():
+            pos = filtered_ndc_points[:, 0:2].cpu().numpy()
+            tri = scipy.spatial.Delaunay(pos, qhull_options='QJ')
+            face = torch.from_numpy(tri.simplices)
+            face = face.contiguous().to(DEVICE, torch.long)
 
-        loss_verts = chamfer_distance(mesh.verts_padded(), pred_vertices)[0]
-        loss["chamf"] += loss_verts
+        # Sample from triangulation
+        pc_mesh = pytorch3d.structures.Meshes(filtered_world_points.unsqueeze(0), face.unsqueeze(0))
+        new_pc = pytorch3d.ops.sample_points_from_meshes(pc_mesh)
 
-        loss_shape = torch.nn.L1Loss()(estimated_shape_params, shapemodel.shapeParams()) / num_shape_params
-        loss["shape_params"] += loss_shape
+        no_hit_raster = rasterization.rasterize_points(non_hitting_ndc_points, config.sigma*30.0, sensor_size)
+        no_hit_softor = rasterization.softor(no_hit_raster)
 
-        
-        # Weighted sum of the losses
-        sum_loss = torch.tensor(0.0, device=DEVICE)
-        sum_loss.requires_grad = True
+        hit_raster = rasterization.rasterize_points(filtered_ndc_points[:, 0:2], config.sigma, sensor_size)
+        hit_softor = rasterization.softor(hit_raster)
+        hit_sum = rasterization.sum(hit_raster)
 
-        for k, l in loss.items():
-            sum_loss = sum_loss + l * losses[k]["weight"]
-            losses[k]["values"].append(float(l.detach().cpu()))
-        
+        loss_3d = pytorch3d.loss.chamfer_distance(new_pc, gt_pointcloud)[0]
+        loss_seg = loss_funcs(segmentation, no_hit_softor) * 0.01
+        loss_sim = loss_funcs(hit_softor, hit_sum) * 0.01
+        loss = loss_3d + loss_seg + loss_sim
         # Print the losses
-        progress_bar.set_description("total_loss = %.6f" % sum_loss)
+        progress_bar.set_description("total_loss = %.6f" % loss.item())
 
-        sum_loss.backward()
+        loss.backward()
         optim.step()
         scheduler.step()
 
-        with torch.no_grad():
-            Laser.randomize_laser_out_of_bounds()
-            Laser.randomize_camera_out_of_bounds(ndc_points)
-            Laser.normalize_rays()
 
-            ndc_points = transforms.project_to_camera_space(global_params, world_points).squeeze()
-            sensor_size = torch.tensor(global_scene.sensors()[0].film().size(), device=DEVICE)
+        with torch.no_grad():
+            # First check if any laserbeam was moved out of its local coordinate system
+            Laser.randomize_laser_out_of_bounds()
+
+            # Next check if any laserbeam was moved out of the camera coordinate system
+            Laser.randomize_camera_out_of_bounds(ndc_points)
+
+            # Normalize the rays
+            Laser.normalize_rays()
+            
+            ndc_points = Laser.projectRaysToNDC()
+            sensor_size = torch.tensor(global_scene.sensors()[1].film().size(), device=DEVICE)
             sparse_depth = rasterization.rasterize_depth(ndc_points[:, 0:2], ndc_points[:, 2:3], config.sigma, sensor_size)
             sparse_depth = rasterization.softor(sparse_depth)
             sparse_depth = torch.clamp(sparse_depth, 0, 1)
@@ -537,13 +534,13 @@ def main():
             cv2.imshow("Points", sparse_depth)
             cv2.waitKey(1)
 
-            if i % 100 == 0:
-                plot_losses(losses)
-                plt.show()
+            #if i % 100 == 0:
+            #    plot_losses(losses)
+            #    plt.show()
+            
 
     printer.Printer.OKG("Optimization done. Initiating post-processing.")
     
-
 
     Laser.save(os.path.join(args.scene_path, "laser.yml"))
     print("Finished everything.")

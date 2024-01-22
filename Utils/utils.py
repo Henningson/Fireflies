@@ -51,6 +51,7 @@ def retain_grads(non_leaf_tensor: List[torch.tensor]) -> None:
         tensor.retain_grad()
 
 
+
 # From: https://pytorch3d.readthedocs.io/en/latest/_modules/pytorch3d/renderer/cameras.html#FoVPerspectiveCameras.compute_projection_matrix
 def build_projection_matrix(fov: float, near_clip: float, far_clip: float, device: torch.cuda.device = torch.device("cuda")) -> torch.tensor:
     """
@@ -104,6 +105,9 @@ def build_projection_matrix(fov: float, near_clip: float, far_clip: float, devic
     return K
 
 
+
+#def tensorToFloatImage(tensor: torch.tensor) -> np.array:
+#    return 
 
 
 def importBlenderNurbsObj(path):
