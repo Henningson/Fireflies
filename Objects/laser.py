@@ -29,6 +29,7 @@ class Laser(Camera.Camera):
 
         return laserRays / torch.linalg.norm(laserRays, dim=-1, keepdims=True)
     
+
     @staticmethod
     def generate_random_rays(num_beams: int, intrinsic_matrix: torch.tensor, device: torch.cuda.device = torch.device("cuda")) -> torch.tensor:
         
@@ -40,8 +41,11 @@ class Laser(Camera.Camera):
 
         # Project to world
         rays = transforms.transform_points(points, intrinsic_matrix.inverse())
+
+        # Normalize
         return rays / torch.linalg.norm(rays, dim=-1, keepdims=True)
     
+
     @staticmethod
     def generate_blue_noise_rays(image_size_x: int, image_size_y: int, num_beams:int, intrinsic_matrix: torch.tensor, device: torch.cuda.device = torch.device("cuda")) -> torch.tensor:
 
@@ -50,8 +54,11 @@ class Laser(Camera.Camera):
         # So we say N < (X*Y) / PI*r*r <=> sqrt(X*Y / PI*N) ~ r
         # 
 
+        temp = torch.empty([num_beams, 3], device=device)
+
         poisson_radius = math.sqrt((image_size_x * image_size_y) / (math.pi * num_beams))
         poisson_samples = bridson.poisson_disc_samples(image_size_x, image_size_y, poisson_radius)
+        poisson_samples = torch.tensor(poisson_samples, device)
         poisson_samples = poisson_samples[0:num_beams]
 
         # From image space to 0 1
@@ -60,7 +67,15 @@ class Laser(Camera.Camera):
         # From 0 to 1 to NDC
         poisson_samples = (poisson_samples - 0.5) * 2.0
 
-        return None
+        # Copy to temp and add 1 for z coordinate
+        temp[:, 0:2] = poisson_samples
+        temp[:, 2] = 1.0
+
+        # Project to world
+        rays = transforms.transform_points(points, intrinsic_matrix.inverse())
+
+        # Normalize
+        return rays / torch.linalg.norm(rays, dim=-1, keepdims=True)
 
     def __init__(self, 
                  transformable: Transformable.Transformable, 
