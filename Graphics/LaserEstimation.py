@@ -14,7 +14,9 @@ import Objects.laser as laser
 from scipy.spatial import ConvexHull
 import numpy as np
 import matplotlib.pyplot as plt
-import Utils.math as math
+import Utils.math as utils_math
+
+import math
 
 
 def probability_distribution_from_depth_maps(
@@ -94,7 +96,7 @@ def get_camera_frustum(sensor, device: torch.cuda.device) -> torch.tensor:
     ray_origins = rays.o.torch()
     ray_directions = rays.d.torch()
 
-    #x_transform = transforms.toMat4x4(math.getXTransform(np.pi*0.5, ray_origins.device))
+    #x_transform = transforms.toMat4x4(utils_math.getXTransform(np.pi*0.5, ray_origins.device))
     #ray_origins = transforms.transform_points(ray_origins, x_transform)
     #ray_directions = transforms.transform_directions(ray_directions, x_transform)
 
@@ -206,7 +208,7 @@ def generate_epipolar_constraints(scene, params, device):
 
     K = utils.build_projection_matrix(params['PerspectiveCamera.x_fov'], params['PerspectiveCamera.near_clip'], params['PerspectiveCamera.far_clip'])
     CAMERA_WORLD = params["PerspectiveCamera.to_world"].matrix.torch()[0]
-    #CAMERA_WORLD[0:3, 0:3] = CAMERA_WORLD[0:3, 0:3] @ math.getYTransform(np.pi, CAMERA_WORLD.device)
+    #CAMERA_WORLD[0:3, 0:3] = CAMERA_WORLD[0:3, 0:3] @ utils_math.getYTransform(np.pi, CAMERA_WORLD.device)
 
     epipolar_points = transforms.transform_points(epipolar_points, CAMERA_WORLD.inverse())
     epipolar_points = transforms.transform_points(epipolar_points, K)[:, 0:2]
@@ -241,62 +243,93 @@ def generate_epipolar_constraints(scene, params, device):
     return torch.from_numpy(image).to(device)
 
 
-
-def initialize_laser(mitsuba_scene, mitsuba_params, firefly_scene, config, device):
-    # Doesnt work, IDK why
-    constraint_map = generate_epipolar_constraints(mitsuba_scene, mitsuba_params, device)
-
-    # Generate random depth maps by uniformly sampling from scene parameter ranges
-    depth_maps = depth.random_depth_maps(firefly_scene, mitsuba_scene, num_maps=config.n_depthmaps)
-
-    # Given depth maps, generate probability distribution
-    variance_map = probability_distribution_from_depth_maps(depth_maps, config.variational_epsilon)
-    vm = (variance_map.cpu().numpy()*255).astype(np.uint8)
-    vm = cv2.applyColorMap(vm, cv2.COLORMAP_VIRIDIS)
-    cv2.imshow("Variance Map", vm)
-    cv2.waitKey(1)
-
-    # Final multiplication and normalization
-    final_sampling_map = variance_map * constraint_map
-    final_sampling_map /= final_sampling_map.sum()
-
-    # Gotta flip this in y direction, since apparently I can't program
-    #final_sampling_map = torch.fliplr(final_sampling_map)
-    #final_sampling_map = torch.flip(final_sampling_map, (0,))
-
-    # sample points for laser rays
-    chosen_points = points_from_probability_distribution(final_sampling_map, config.n_beams)
-
-    vm = variance_map.cpu().numpy()
-    cp = chosen_points.cpu().numpy()
-    cm = constraint_map.cpu().numpy()
-    if config.save_images:
-        vm = (vm*255).astype(np.uint8)
-        vm = cv2.applyColorMap(vm, cv2.COLORMAP_VIRIDIS)
-        vm.reshape(-1, 3)[cp, :] = ~vm.reshape(-1, 3)[cp, :]
-        cv2.imwrite("sampling_map.png", vm)
-        cm = cm*255
-        cv2.imwrite("constraint_map.png", cm)
-
-    # Build laser from Projector constraints
-    #tex_size = torch.tensor(mitsuba_scene.sensors()[1].film().size(), device=device)
+def initialize_laser(mitsuba_scene, mitsuba_params, firefly_scene, config, mode, device):
     near_clip = mitsuba_scene.sensors()[1].near_clip()
     far_clip = mitsuba_scene.sensors()[1].far_clip()
-    fov = mitsuba_params['PerspectiveCamera_1.x_fov']
+    fov = float(mitsuba_params['PerspectiveCamera_1.x_fov'][0])
+    radians = math.pi / 180.0
 
-    laser_world = firefly_scene.projector.world()
-    laser_origin = laser_world[0:3, 3]
-    # Sample directions of laser beams from variance map
-    laser_dir = laser_from_ndc_points(mitsuba_scene.sensors()[0],
-                            laser_origin,
-                            depth_maps,
-                            chosen_points,
-                            device=device)
+    image_size = torch.tensor(mitsuba_scene.sensors()[1].film().size(), device=device)
+    K = utils.build_projection_matrix(fov, 0.01, 10000.0, device=device)
+    n_beams = config.n_beams
+
+    local_laser_dir = None
+    if mode == "RANDOM":
+        local_laser_dir = laser.Laser.generate_random_rays(
+            num_beams = n_beams,
+            intrinsic_matrix = K,
+            device=device
+        )
+    elif mode == "BLUE_NOISE":
+        local_laser_dir = laser.Laser.generate_blue_noise_rays(
+            image_size_x = image_size[0],
+            image_size_y = image_size[1],
+            num_beams = n_beams,
+            intrinsic_matrix = K,
+            device = device)
+    elif mode == "GRID":
+        grid_width = int(math.sqrt(config.n_beams))
+        local_laser_dir = laser.Laser.generate_uniform_rays(
+            fov * radians / grid_width,
+            num_beams_x = grid_width,
+            num_beams_y = grid_width,
+            device=device)
+    elif mode == "SMARTY":
+        # Doesnt work, IDK why
+        constraint_map = generate_epipolar_constraints(mitsuba_scene, mitsuba_params, device)
+
+        # Generate random depth maps by uniformly sampling from scene parameter ranges
+        depth_maps = depth.random_depth_maps(firefly_scene, mitsuba_scene, num_maps=config.n_depthmaps)
+
+        # Given depth maps, generate probability distribution
+        variance_map = probability_distribution_from_depth_maps(depth_maps, config.variational_epsilon)
+        vm = (variance_map.cpu().numpy()*255).astype(np.uint8)
+        vm = cv2.applyColorMap(vm, cv2.COLORMAP_VIRIDIS)
+        cv2.imshow("Variance Map", vm)
+        cv2.waitKey(1)
+
+        # Final multiplication and normalization
+        final_sampling_map = variance_map * constraint_map
+        final_sampling_map /= final_sampling_map.sum()
+
+        # Gotta flip this in y direction, since apparently I can't program
+        #final_sampling_map = torch.fliplr(final_sampling_map)
+        #final_sampling_map = torch.flip(final_sampling_map, (0,))
+
+        # sample points for laser rays
+        chosen_points = points_from_probability_distribution(final_sampling_map, config.n_beams)
+
+        vm = variance_map.cpu().numpy()
+        cp = chosen_points.cpu().numpy()
+        cm = constraint_map.cpu().numpy()
+        if config.save_images:
+            vm = (vm*255).astype(np.uint8)
+            vm = cv2.applyColorMap(vm, cv2.COLORMAP_VIRIDIS)
+            vm.reshape(-1, 3)[cp, :] = ~vm.reshape(-1, 3)[cp, :]
+            cv2.imwrite("sampling_map.png", vm)
+            cm = cm*255
+            cv2.imwrite("constraint_map.png", cm)
+
+        # Build laser from Projector constraints
+        #tex_size = torch.tensor(mitsuba_scene.sensors()[1].film().size(), device=device)
+        near_clip = mitsuba_scene.sensors()[1].near_clip()
+        far_clip = mitsuba_scene.sensors()[1].far_clip()
+        fov = mitsuba_params['PerspectiveCamera_1.x_fov']
+
+        laser_world = firefly_scene.projector.world()
+        laser_origin = laser_world[0:3, 3]
+        # Sample directions of laser beams from variance map
+        laser_dir = laser_from_ndc_points(mitsuba_scene.sensors()[0],
+                                laser_origin,
+                                depth_maps,
+                                chosen_points,
+                                device=device)
 
 
-    # Apply inverse rotation of the projector, such that we get a normalized direction
-    # The laser direction up until now is in world coordinates!
-    local_laser_dir = transforms.transform_directions(laser_dir, laser_world.inverse())
+        # Apply inverse rotation of the projector, such that we get a normalized direction
+        # The laser direction up until now is in world coordinates!
+        local_laser_dir = transforms.transform_directions(laser_dir, laser_world.inverse())
+    
     return laser.Laser(firefly_scene.projector, local_laser_dir, fov, near_clip, far_clip)
 
 

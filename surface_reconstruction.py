@@ -114,7 +114,7 @@ import pytorch3d.loss
 import pytorch3d.ops
 import pytorch3d.structures
 
-
+import time
 
 global_scene = None
 global_params = None
@@ -136,6 +136,18 @@ def cast_laser(origin, direction):
     result = surface_interaction.t
     result[~surface_interaction.is_valid()] = 0
     return mi.TensorXf(result, shape=(len(result), 1))
+
+
+@dr.wrap_ad(source='torch', target='drjit')
+def cast_to_object_id(origin, direction):
+    origin_point = mi.Point3f(origin[:, 0].array, origin[:, 1].array, origin[:, 2].array)
+    rays_vector = mi.Vector3f(direction[:, 0].array, direction[:, 1].array, direction[:, 2].array)
+    surface_interaction = global_scene.ray_intersect(mi.Ray3f(origin_point, rays_vector))
+    
+
+    shape_pointer = mi.Int(dr.reinterpret_array_v(mi.UInt, surface_interaction.shape)).torch()
+    shape_pointer -= shape_pointer.min()
+    return mi.TensorXi(shape_pointer, shape=(len(shape_pointer), 1))
 
 
 def get_cameras_and_renderer(num_views, image_size, sigma, faces_per_pixel, DEVICE):    # Get a batch of viewing angles. 
@@ -214,18 +226,19 @@ def visualize(mesh_a, mesh_b, device):
 
     mesh = mesh_a
 
-    for i in range(8):
-        yaw_mat   = getYawTransform(90*radian, device)
-        pitch_mat = getPitchTransform(0.0, device)
-        roll_mat  = getRollTransform(45*radian, device)
+    # 45 deg um x und -90 deg um y achse
+    yaw_mat   = utils_math.getYawTransform(90*radian, device)
+    roll_mat = utils_math.getRollTransform(-45.0, device)
+    #roll_mat  = getRollTransform(45*radian, device)
 
-        rot = toMat4x4(yaw_mat @ pitch_mat @ roll_mat)
+    rot = transforms.toMat4x4(yaw_mat @ roll_mat)
 
+    for i in range(mesh_a.verts_padded().shape[0]):
         faces = mesh.faces_padded()
-        vertices = mesh.vertices_padded()
+        vertices = mesh.verts_padded()
         vertex_colors = np.ones([vertices.shape[0], 4]) * [0.3, 0.3, 0.3, 1.0]
 
-        tri_mesh = trimesh.Trimesh(vertices, faces[i].detach().cpu().numpy(), vertex_colors=vertex_colors)
+        tri_mesh = trimesh.Trimesh(vertices[i].detach().cpu().numpy(), faces[i].detach().cpu().numpy(), vertex_colors=vertex_colors)
         tri_mesh.apply_transform(rot.detach().cpu().numpy())
         pyrend_mesh = pyrender.Mesh.from_trimesh(tri_mesh)
         scene = pyrender.Scene()
@@ -352,7 +365,9 @@ def pointcloud_to_volume(points: torch.tensor, num_voxels: int = 32):
 def get_rand_params(batch_size: int, num_params:int , stddev: float = 2.0):
     return ((torch.rand(batch_size, num_params) - 0.5) * 2.0) * stddev
 
-def main():
+def main(last_iter, last_rays):
+    restart = False
+
     global global_scene
     global global_params
     global global_key
@@ -371,7 +386,7 @@ def main():
     num_views = 8
     num_views_per_iteration = num_views
 
-    shape_interval = 2.0
+    shape_interval = 0.0
     expression_interval = 0.0
     pose_interval = 0.0
 
@@ -384,7 +399,7 @@ def main():
 
 
     
-    sigma = torch.tensor([config.sigma], device=DEVICE)
+    sigma = torch.tensor([config.sigma], device=DEVICE) * 3.0
     global_scene = mi.load_file(os.path.join(args.scene_path, "scene.xml"))
     global_params = mi.traverse(global_scene)
 
@@ -396,6 +411,12 @@ def main():
     global_params.update()
     global_key = "tex.data"
 
+    # Initialize optimizer
+    segmentation = depth.get_segmentation_from_camera(global_scene).float()
+    segmentation /= segmentation.max()
+    
+    cv2.imshow("Seg", segmentation.detach().cpu().numpy())
+    cv2.waitKey(1)
 
     firefly_scene = Firefly.Scene(global_params, 
                                   args.scene_path, 
@@ -409,19 +430,24 @@ def main():
         if isinstance(value, Transformable.ShapeModel):
             shapemodel_key = key
 
-    Laser = LaserEstimation.initialize_laser(global_scene, global_params, firefly_scene, config, DEVICE)
+
+    # MODES ARE = SMARTY, GRID, RANDOM, BLUE_NOISE
+    Laser = LaserEstimation.initialize_laser(global_scene, global_params, firefly_scene, config, "GRID", DEVICE)
+    if last_rays is not None:
+        Laser._rays = last_rays.to(DEVICE)
     #Laser.randomize_out_of_bounds()
     #Laser.normalize_rays()
 
     loss_funcs = Losses.Handler([
-            [torch.nn.MSELoss().to(DEVICE), 1.0]
+            [torch.nn.L1Loss().to(DEVICE), 1.0]
             ])
 
     Laser._rays.requires_grad = True
     sigma.requires_grad = True
 
     optim = torch.optim.SGD([
-        {'params': Laser._rays,         'lr': config.lr_laser * 10}
+        {'params': Laser._rays,         'lr': config.lr_laser * 0.1},
+        {'params': sigma,               'lr': config.lr_sigma * 1.0}
         ])
     
 
@@ -429,8 +455,10 @@ def main():
     shapemodel = firefly_scene.meshes[shapemodel_key]
     # Hacky magic number here. But we want a better L2 Loss
     vertex_color = torch.randn(1, 5023, 3).to(DEVICE)
+    restart = False
 
-    for i in (progress_bar := tqdm(range(config.iterations))):
+    for i in (progress_bar := tqdm(range(last_iter, config.iterations))):
+        start_time = time.time()
         with torch.no_grad():
             vertices, faces = shapemodel.getVertexData()
             vertices = vertices.unsqueeze(0)
@@ -439,79 +467,88 @@ def main():
             
             face_normals = mesh.faces_normals_packed()
             _, camera_direction = LaserEstimation.getRayFromSensor(global_scene.sensors()[0], [0.0, 0.0])
-            backface_culled = utils_math.vector_dot(face_normals, camera_direction) >= 0
+            backface_culled = utils_math.vector_dot(face_normals, camera_direction) <= 0
 
             backface_culled_faces = faces[backface_culled]
             mesh = Meshes(vertices, backface_culled_faces.unsqueeze(0))
+            #visualize(mesh, mesh, device=DEVICE)
+
             gt_pointcloud = pytorch3d.ops.sample_points_from_meshes(mesh)
+
+
+        firefly_scene.randomize()
+
 
         # Initialize optimizer
         segmentation = depth.get_segmentation_from_camera(global_scene).float()
-        firefly_scene.randomize()
-        optim.zero_grad()
+        segmentation /= segmentation.max()
+
 
         sensor_size = torch.tensor(global_scene.sensors()[0].film().size(), device=DEVICE)
         hit_d = cast_laser(Laser.originPerRay(), Laser.rays())
+        hit_id = cast_to_object_id(Laser.originPerRay(), Laser.rays()).squeeze()
         world_points = Laser.originPerRay() + Laser.rays() * hit_d
+
+        # Split world points in the ones that hit the target object and the rest
+        world_points_hit = world_points[hit_id > 0]
+        world_points_rest = world_points[hit_id == 0]
+
+        # Project the world_points into ndc, and generate the same hit and non-hit split
         ndc_points = transforms.project_to_camera_space(global_params, world_points).squeeze()
+        ndc_points_hit = ndc_points[hit_id > 0]
+        ndc_points_rest = ndc_points[hit_id == 0]
 
-        #ndc_points = ndc_points[~(ndc_points[:, 0:2] < -1).any(dim=-1)]
-        #ndc_points = ndc_points[~(ndc_points[:, 0:2] > 1).any(dim=-1)]
+        # Check if any ndc points lie outside of our camera frame
+        hit_oob = ~((ndc_points_hit[:, 0:2] >= 1.0) | (ndc_points_hit[:, 0:2] <= -1.0)).any(dim=1)
+        rest_oob = ~((ndc_points_rest[:, 0:2] >= 1.0) | (ndc_points_rest[:, 0:2] <= -1.0)).any(dim=1)
 
-        # Remove points that do not lie inside the image space, we do not want to trace these.
-        out_of_bounds_indices = ~((ndc_points[:, 0:2] >= 1.0) | (ndc_points[:, 0:2] <= -1.0)).any(dim=1)
-        ndc_points = ndc_points[out_of_bounds_indices]
+        # Remove outlier that do not lie inside the image space, they are "respawned" later on :)
+        world_points_hit = world_points_hit[hit_oob]
+        world_points_rest = world_points_rest[rest_oob]
+        ndc_points_hit = ndc_points_hit[hit_oob]
+        ndc_points_rest = ndc_points_rest[rest_oob]
 
-        # We should remove points, that do not fall into the object itself here.
-
-        image_space_points = (ndc_points[:, 0:2] * 0.5 + 0.5) * sensor_size
-        quantized_indices = image_space_points.floor().int()
-        
-        if quantized_indices.max() == 269:
-            a = 127498
-        
-
-
-        object_hits = segmentation[quantized_indices[:, 1], quantized_indices[:, 0]].nonzero().squeeze()
-        object_nonhits = (segmentation[quantized_indices[:, 1], quantized_indices[:, 0]] == 0).nonzero().squeeze()
-
-        filtered_world_points = world_points[object_hits]
-        filtered_ndc_points = ndc_points[object_hits]
-
-        non_hitting_ndc_points = ndc_points[object_nonhits][:, 0:2]
-
-
-        # The rest of the points should be moved into the region of interest, with a specific gradient and a bigger sigma
-        # TODO: Implement me
-
+        # Generate delaunay triangulation in image space
         with torch.no_grad():
-            pos = filtered_ndc_points[:, 0:2].cpu().numpy()
+            pos = ndc_points_hit[:, 0:2].cpu().numpy()
             tri = scipy.spatial.Delaunay(pos, qhull_options='QJ')
             face = torch.from_numpy(tri.simplices)
             face = face.contiguous().to(DEVICE, torch.long)
+            face = face[:, [0, 2, 1]]
+        
+        # Use faces acquired in 2D to build continouos mesh in 3D
+        pc_mesh = pytorch3d.structures.Meshes(world_points_hit.unsqueeze(0), face.unsqueeze(0))
 
-        # Sample from triangulation
-        pc_mesh = pytorch3d.structures.Meshes(filtered_world_points.unsqueeze(0), face.unsqueeze(0))
+
+        # Sample random points from generated mesh
         new_pc = pytorch3d.ops.sample_points_from_meshes(pc_mesh)
 
-        no_hit_raster = rasterization.rasterize_points(non_hitting_ndc_points, config.sigma*30.0, sensor_size)
-        no_hit_softor = rasterization.softor(no_hit_raster)
+        raster = rasterization.rasterize_points(torch.concat([ndc_points_rest, ndc_points_hit], dim=0)[:, 0:2], sigma, sensor_size)
+        softor = rasterization.softor(raster)
 
-        hit_raster = rasterization.rasterize_points(filtered_ndc_points[:, 0:2], config.sigma, sensor_size)
-        hit_softor = rasterization.softor(hit_raster)
-        hit_sum = rasterization.sum(hit_raster)
+        #hit_raster = rasterization.rasterize_points(filtered_ndc_points[:, 0:2], config.sigma, sensor_size)
+        #hit_softor = rasterization.softor(hit_raster)
+        #hit_sum = rasterization.sum(hit_raster)
 
+        # Compute 3D Chamfer loss between newly generated triangulation and GT Data
         loss_3d = pytorch3d.loss.chamfer_distance(new_pc, gt_pointcloud)[0]
-        loss_seg = loss_funcs(segmentation, no_hit_softor) * 0.01
-        loss_sim = loss_funcs(hit_softor, hit_sum) * 0.01
-        loss = loss_3d + loss_seg + loss_sim
+        loss_seg = loss_funcs(segmentation, softor)
+        #loss_sim = loss_funcs(hit_softor, hit_sum) * 0.0
+        loss = loss_seg + loss_3d# / batch_size
         # Print the losses
         progress_bar.set_description("total_loss = %.6f" % loss.item())
 
         loss.backward()
-        optim.step()
-        scheduler.step()
 
+        if i > 0 and i % 8 == 0:
+            optim.step()
+            scheduler.step()
+            optim.zero_grad()
+
+            #visualize(pc_mesh, mesh, DEVICE)
+
+        #if i % 100 == 0:
+        #    visualize(pc_mesh, pc_mesh, DEVICE)
 
         with torch.no_grad():
             # First check if any laserbeam was moved out of its local coordinate system
@@ -524,10 +561,10 @@ def main():
             Laser.normalize_rays()
             
             ndc_points = Laser.projectRaysToNDC()
-            sensor_size = torch.tensor(global_scene.sensors()[1].film().size(), device=DEVICE)
-            sparse_depth = rasterization.rasterize_depth(ndc_points[:, 0:2], ndc_points[:, 2:3], config.sigma, sensor_size)
-            sparse_depth = rasterization.softor(sparse_depth)
-            sparse_depth = torch.clamp(sparse_depth, 0, 1)
+            #sensor_size = torch.tensor(global_scene.sensors()[1].film().size(), device=DEVICE)
+            #sparse_depth = rasterization.rasterize_depth(ndc_points[:, 0:2], ndc_points[:, 2:3], config.sigma*3.0, sensor_size)
+            #sparse_depth = rasterization.softor(sparse_depth)
+            sparse_depth = torch.clamp(softor, 0, 1)
             sparse_depth = sparse_depth.detach().cpu().numpy() * 255
             sparse_depth = sparse_depth.astype(np.uint8)
 
@@ -538,13 +575,21 @@ def main():
             #    plot_losses(losses)
             #    plt.show()
             
-
-    printer.Printer.OKG("Optimization done. Initiating post-processing.")
+        if time.time() - start_time > 0.5:
+            restart = True
+            print("Restarting.")
+            break
     
 
-    Laser.save(os.path.join(args.scene_path, "laser.yml"))
+    #Laser.save(os.path.join(args.scene_path, "laser.yml"))
     print("Finished everything.")
+
+    return restart, i, Laser._rays
 
 
 if __name__ == "__main__":
-    main()
+    restart = True
+    iteration = 0
+    rays = None
+    while restart:
+        restart, iteration, rays = main(iteration, rays)

@@ -25,7 +25,7 @@ class Laser(Camera.Camera):
                 laserRays[x * num_beams_x + y, :] = torch.tensor([
                     math.tan((x-(num_beams_x - 1) / 2) * intra_ray_angle), 
                     math.tan((y-(num_beams_y - 1) / 2) * intra_ray_angle), 
-                    1.0])
+                    -1.0])
 
         return laserRays / torch.linalg.norm(laserRays, dim=-1, keepdims=True)
     
@@ -37,10 +37,10 @@ class Laser(Camera.Camera):
         spawned_points = torch.rand([num_beams, 3], device=device) * 2.0 - 1.0
 
         # Set Z to 1
-        spawned_points[:, 2] = 1.0
+        spawned_points[:, 2] = -1.0
 
         # Project to world
-        rays = transforms.transform_points(points, intrinsic_matrix.inverse())
+        rays = transforms.transform_points(spawned_points, intrinsic_matrix.inverse())
 
         # Normalize
         return rays / torch.linalg.norm(rays, dim=-1, keepdims=True)
@@ -54,25 +54,32 @@ class Laser(Camera.Camera):
         # So we say N < (X*Y) / PI*r*r <=> sqrt(X*Y / PI*N) ~ r
         # 
 
-        temp = torch.empty([num_beams, 3], device=device)
-
         poisson_radius = math.sqrt((image_size_x * image_size_y) / (math.pi * num_beams))
+        poisson_radius += poisson_radius/4.0
         poisson_samples = bridson.poisson_disc_samples(image_size_x, image_size_y, poisson_radius)
-        poisson_samples = torch.tensor(poisson_samples, device)
-        poisson_samples = poisson_samples[0:num_beams]
+        print(len(poisson_samples))
+        poisson_samples = torch.tensor(poisson_samples, device=device)
+
+        # Remove random points from poisson samples such that num_beams is correct again.
+        #indices = torch.linspace(0, poisson_samples.shape[0] - 1, poisson_samples.shape[0], device=device)
+        #indices = torch.multinomial(indices, num_beams, replacement=False).long()
+        #poisson_samples = poisson_samples[indices]
 
         # From image space to 0 1
-        poisson_samples /= np.array([image_size_x, image_size_y])
+        poisson_samples /= torch.tensor([image_size_x, image_size_y], device=device)
 
         # From 0 to 1 to NDC
         poisson_samples = (poisson_samples - 0.5) * 2.0
 
+        # Create empty tensor for copying
+        temp = torch.empty([poisson_samples.shape[0], 3], device=device)
+
         # Copy to temp and add 1 for z coordinate
         temp[:, 0:2] = poisson_samples
-        temp[:, 2] = 1.0
+        temp[:, 2] = -1.0
 
         # Project to world
-        rays = transforms.transform_points(points, intrinsic_matrix.inverse())
+        rays = transforms.transform_points(temp, intrinsic_matrix.inverse())
 
         # Normalize
         return rays / torch.linalg.norm(rays, dim=-1, keepdims=True)
@@ -506,8 +513,29 @@ if __name__ == "__main__":
     mi.set_variant("cuda_ad_rgb")
     import Graphics.rasterization as rasterization
     import matplotlib.pyplot as plt
+    import cv2
+
+    im_size = torch.tensor([512, 512], device="cuda")
+
+    K = utils.build_projection_matrix(60, 0.01, 10.0)
+
+    uniform_rays = Laser.generate_uniform_rays(5 * math.pi / 180.0, 10, 10)
+    blue_noise_rays = Laser.generate_blue_noise_rays(512, 512, 100, K)
+    random_rays = Laser.generate_random_rays(100, K)
+
+    uniform_ndc = transforms.transform_points(uniform_rays, K)
+    blue_noise_ndc = transforms.transform_points(blue_noise_rays, K)
+    random_ndc = transforms.transform_points(random_rays, K)
+
+    uniform = rasterization.softor(rasterization.rasterize_points(uniform_ndc[:, 0:2], 5.0, im_size))
+    blue_noise = rasterization.softor(rasterization.rasterize_points(blue_noise_ndc[:, 0:2], 5.0, im_size))
+    random = rasterization.softor(rasterization.rasterize_points(random_ndc[:, 0:2], 5.0, im_size))
     
-    p = Laser.generate_blue_noise_rays(512, 512, 100, None, "cpu")
+    cv2.imshow("Uniform", uniform.detach().cpu().numpy())
+    cv2.imshow("Blue Noise", blue_noise.detach().cpu().numpy())
+    cv2.imshow("Random", random.detach().cpu().numpy())
+
+    cv2.waitKey(0)
 
 
     laser = Laser(20, 20, 0.5, torch.eye(4), torch.tensor([0.0, 0.0, 0.0]), max_fov=9)

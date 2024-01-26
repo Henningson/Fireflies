@@ -460,6 +460,8 @@ def main():
 
         # Initialize optimizer
         segmentation = depth.get_segmentation_from_camera(global_scene).float()
+
+
         firefly_scene.randomize()
         optim.zero_grad()
 

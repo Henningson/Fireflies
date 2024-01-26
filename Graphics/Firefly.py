@@ -250,39 +250,48 @@ def generate_epipolar_shadow(scene):
     pass
 
 
+
+@dr.wrap_ad(source='torch', target='drjit')
+def render(texture, spp=256, seed=1):
+    global_params.update()
+    return mi.render(global_scene, global_params, spp=spp, seed=seed, seed_grad=seed+1)
+
+
+
 if __name__ == "__main__":
     from tqdm import tqdm
     import matplotlib.pyplot as plt
     import cv2
+    import Graphics.rasterization as rasterization
+    from argparse import Namespace
 
     base_path = "scenes/TestsceneNew/"
 
     mitsuba_scene = mi.load_file(os.path.join(base_path, "scene.xml"))
     mitsuba_params = mi.traverse(mitsuba_scene)
-    #mitsuba_params["PerspectiveCamera.film.size"] = [1080//2, 1080//2]
+    mitsuba_params["PerspectiveCamera.film.size"] = [1080//2, 1080//2]
+    mitsuba_params["PerspectiveCamera_1.film.size"] = [1080//2, 1080//2]
     mitsuba_params['Projector.to_world'] = mitsuba_params['PerspectiveCamera_1.to_world']
-    print(mitsuba_params['PerspectiveCamera_1.to_world'])
 
-
-
-    render = mi.render(mitsuba_scene, spp=20)
-    import matplotlib.pyplot as plt
-
-    #plt.axis("off")
-    #plt.imshow(render ** (1.0 / 2.2))
-    #plt.show()
+    config = Namespace(**{'n_beams': 18*18,})
+    sigma = torch.tensor([8.0], device="cuda")
+    texture_size = torch.tensor(mitsuba_scene.sensors()[1].film().size(), device="cuda")
 
     firefly_scene = Scene(mitsuba_params, base_path)
 
-    #constraint_map = LaserEstimation.generate_epipolar_constraints(mitsuba_scene, mitsuba_params, "cuda")
+    laser_init = LaserEstimation.initialize_laser(mitsuba_scene, mitsuba_params, firefly_scene, config, "BLUE_NOISE", device="cuda")
+    points = laser_init.projectRaysToNDC()[:, 0:2]
+    texture_init = rasterization.rasterize_points(points, sigma, texture_size)
+    texture_init = rasterization.softor(texture_init)
 
+    mitsuba_params['tex.data'] = texture_init.unsqueeze(-1)
 
     for i in tqdm(range(100000)):
         firefly_scene.randomize()
-        render = mi.render(mitsuba_scene, spp=10)
-        render = torch.clamp(render.torch(), 0, 1)[:, :, [2, 1, 0]].cpu().numpy()
-        cv2.imshow("Render.png", render)
-        constraint_map = LaserEstimation.generate_epipolar_constraints(mitsuba_scene, mitsuba_params, "cuda")
+        
+        render_im = mi.render(mitsuba_scene, spp=10)
+        render_im = torch.clamp(render_im.torch(), 0, 1)[:, :, [2, 1, 0]].cpu().numpy()
+        cv2.imshow("Render.png", render_im)
         cv2.waitKey(1)
 
  
