@@ -432,7 +432,7 @@ def main(last_iter, last_rays):
 
 
     # MODES ARE = SMARTY, GRID, RANDOM, BLUE_NOISE
-    Laser = LaserEstimation.initialize_laser(global_scene, global_params, firefly_scene, config, "GRID", DEVICE)
+    Laser = LaserEstimation.initialize_laser(global_scene, global_params, firefly_scene, config, "SMARTY", DEVICE)
     if last_rays is not None:
         Laser._rays = last_rays.to(DEVICE)
     #Laser.randomize_out_of_bounds()

@@ -15,6 +15,8 @@ from scipy.spatial import ConvexHull
 import numpy as np
 import matplotlib.pyplot as plt
 import Utils.math as utils_math
+import Utils.bridson as bridson
+
 
 import math
 
@@ -283,21 +285,31 @@ def initialize_laser(mitsuba_scene, mitsuba_params, firefly_scene, config, mode,
 
         # Given depth maps, generate probability distribution
         variance_map = probability_distribution_from_depth_maps(depth_maps, config.variational_epsilon)
+        variance_map = utils.normalize(variance_map)
         vm = (variance_map.cpu().numpy()*255).astype(np.uint8)
-        vm = cv2.applyColorMap(vm, cv2.COLORMAP_VIRIDIS)
+        #vm = cv2.applyColorMap(vm, cv2.COLORMAP_VIRIDIS)
         cv2.imshow("Variance Map", vm)
-        cv2.waitKey(1)
+        cv2.waitKey(0)
 
         # Final multiplication and normalization
-        final_sampling_map = variance_map * constraint_map
+        final_sampling_map = variance_map# * constraint_map
         final_sampling_map /= final_sampling_map.sum()
-
+        
         # Gotta flip this in y direction, since apparently I can't program
         #final_sampling_map = torch.fliplr(final_sampling_map)
         #final_sampling_map = torch.flip(final_sampling_map, (0,))
 
         # sample points for laser rays
-        chosen_points = points_from_probability_distribution(final_sampling_map, config.n_beams)
+        
+        min_radius = config.sigma
+        max_radius = 5 * min_radius
+        normalized_sampling = 1 - utils.normalize(final_sampling_map)
+        normalized_sampling = min_radius + (max_radius - min_radius) * normalized_sampling
+        n_points, points = bridson.poissonDiskSampling(normalized_sampling.detach().cpu().numpy(), 50)
+        points = torch.from_numpy(points).to(device).floor().int()
+        chosen_points = points[:, 0] * final_sampling_map.shape[1] + points[:, 1]
+
+        #chosen_points = points_from_probability_distribution(final_sampling_map, config.n_beams)
 
         vm = variance_map.cpu().numpy()
         cp = chosen_points.cpu().numpy()
@@ -330,9 +342,8 @@ def initialize_laser(mitsuba_scene, mitsuba_params, firefly_scene, config, mode,
         # The laser direction up until now is in world coordinates!
         local_laser_dir = transforms.transform_directions(laser_dir, laser_world.inverse())
     
+    # Flip Y
+    # I really gotta fix those coordinate systems...
+    local_laser_dir[:, 1] *= -1.0
+
     return laser.Laser(firefly_scene.projector, local_laser_dir, fov, near_clip, far_clip)
-
-
-
-if __name__ == "__main__":
-    test()

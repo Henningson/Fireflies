@@ -29,6 +29,7 @@ import Metrics.Losses as Losses
 import Utils.ConfigArgsParser as CAP
 import Utils.Args as Args
 import Utils.utils as utils
+import Utils.bridson
 
 import Utils.printer as printer
 from tqdm import tqdm
@@ -131,8 +132,11 @@ def main():
     final_sampling_map = variance_map * constraint_map
     final_sampling_map /= final_sampling_map.sum()
 
+
     # sample points for laser rays
     chosen_points = LaserEstimation.points_from_probability_distribution(final_sampling_map, config.n_beams)
+
+    # Use bridson based on the sampling map
 
     vm = variance_map.cpu().numpy()
     cp = chosen_points.cpu().numpy()

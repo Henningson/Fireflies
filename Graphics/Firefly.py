@@ -3,6 +3,7 @@ from pathlib import Path
 import os
 import mitsuba as mi
 mi.set_variant("cuda_ad_rgb")
+
 import drjit as dr
 import Objects.entity as entity
 import Utils.utils as utils
@@ -12,8 +13,9 @@ import Objects.Camera as Camera
 import Objects.Transformable as Transformable
 import Utils.transforms as transforms
 import numpy as np
-import Utils.math as math
+import Utils.math as utils_math
 import Graphics.LaserEstimation as LaserEstimation
+import math
 
 class Scene:
     def __init__(self, 
@@ -192,7 +194,7 @@ class Scene:
 
         # Couldn't find a better way to get this torch tensor into mitsuba Transform4f
         worldMatrix = self.camera.world()
-        worldMatrix[0:3, 0:3] = worldMatrix[0:3, 0:3] @ math.getYTransform(np.pi, self._device)
+        worldMatrix[0:3, 0:3] = worldMatrix[0:3, 0:3] @ utils_math.getYTransform(np.pi, self._device)
         #worldMatrix[0:3, 0:3] = worldMatrix[0:3, 0:3] 
         self.scene_params[key + ".to_world"] = mi.Transform4f(worldMatrix.tolist())
 
@@ -204,7 +206,7 @@ class Scene:
         # TODO: Remove key
         key = "Projector"
         worldMatrix = self.projector.world()
-        worldMatrix[0:3, 0:3] = worldMatrix[0:3, 0:3] @ math.getYTransform(np.pi, self._device)
+        worldMatrix[0:3, 0:3] = worldMatrix[0:3, 0:3] @ utils_math.getYTransform(np.pi, self._device)
 
         # TODO: Is there a better way here?
         # Couldn't find a better way to get this torch tensor into mitsuba Transform4f
@@ -265,33 +267,43 @@ if __name__ == "__main__":
     import Graphics.rasterization as rasterization
     from argparse import Namespace
 
-    base_path = "scenes/TestsceneNew/"
+    base_path = "scenes/RotBlob/"
+
+
+    config = utils.read_config_yaml(os.path.join(base_path, "config.yml"))
+    config = Namespace(**config)
 
     mitsuba_scene = mi.load_file(os.path.join(base_path, "scene.xml"))
     mitsuba_params = mi.traverse(mitsuba_scene)
-    mitsuba_params["PerspectiveCamera.film.size"] = [1080//2, 1080//2]
-    mitsuba_params["PerspectiveCamera_1.film.size"] = [1080//2, 1080//2]
+    mitsuba_params["PerspectiveCamera.film.size"] //= 2
+    mitsuba_params["PerspectiveCamera_1.film.size"] //= 2
     mitsuba_params['Projector.to_world'] = mitsuba_params['PerspectiveCamera_1.to_world']
+    mitsuba_params.update()
 
-    config = Namespace(**{'n_beams': 18*18,})
-    sigma = torch.tensor([8.0], device="cuda")
+
+    sigma = torch.tensor([config.sigma], device="cuda").sqrt()
     texture_size = torch.tensor(mitsuba_scene.sensors()[1].film().size(), device="cuda")
 
-    firefly_scene = Scene(mitsuba_params, base_path)
+    firefly_scene = Scene(mitsuba_params, base_path, sequential_animation=True)
 
-    laser_init = LaserEstimation.initialize_laser(mitsuba_scene, mitsuba_params, firefly_scene, config, "BLUE_NOISE", device="cuda")
+    laser_init = LaserEstimation.initialize_laser(mitsuba_scene, mitsuba_params, firefly_scene, config, "GRID", device="cuda")
     points = laser_init.projectRaysToNDC()[:, 0:2]
     texture_init = rasterization.rasterize_points(points, sigma, texture_size)
     texture_init = rasterization.softor(texture_init)
+    #texture_init = torch.flipud(texture_init)
 
     mitsuba_params['tex.data'] = texture_init.unsqueeze(-1)
+
+    #firefly_scene.randomize()
+    #render_im = mi.render(mitsuba_scene)
+
 
     for i in tqdm(range(100000)):
         firefly_scene.randomize()
         
-        render_im = mi.render(mitsuba_scene, spp=10)
+        render_im = mi.render(mitsuba_scene)
         render_im = torch.clamp(render_im.torch(), 0, 1)[:, :, [2, 1, 0]].cpu().numpy()
-        cv2.imshow("Render.png", render_im)
-        cv2.waitKey(1)
+        cv2.imshow("Render", render_im)
+        cv2.waitKey(0)
 
  

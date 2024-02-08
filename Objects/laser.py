@@ -56,9 +56,11 @@ class Laser(Camera.Camera):
 
         poisson_radius = math.sqrt((image_size_x * image_size_y) / (math.pi * num_beams))
         poisson_radius += poisson_radius/4.0
-        poisson_samples = bridson.poisson_disc_samples(image_size_x, image_size_y, poisson_radius)
-        print(len(poisson_samples))
+        im = np.ones([image_size_y, image_size_x]) * poisson_radius
+        num_samples, poisson_samples = bridson.poissonDiskSampling(im)
+        #print(len(poisson_samples))
         poisson_samples = torch.tensor(poisson_samples, device=device)
+        print(num_samples)
 
         # Remove random points from poisson samples such that num_beams is correct again.
         #indices = torch.linspace(0, poisson_samples.shape[0] - 1, poisson_samples.shape[0], device=device)
@@ -240,7 +242,7 @@ class Laser(Camera.Camera):
     def save(self, filepath: str):
         save_dict = {
             'rays': self._rays.detach().cpu().numpy().tolist(),
-            'fov': self._fov.torch().detach().cpu().numpy()[0],
+            'fov': self._fov,
             'near_clip': self._near_clip,
             'far_clip': self._far_clip
         }

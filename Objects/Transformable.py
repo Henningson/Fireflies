@@ -70,24 +70,24 @@ class Transformable:
 
 
     def sampleRotation(self) -> torch.tensor:
-        xRot = utilsmath.uniformBetweenValues(self.rot_min_x, self.rot_max_x)
-        yRot = utilsmath.uniformBetweenValues(self.rot_min_y, self.rot_max_y)
-        zRot = utilsmath.uniformBetweenValues(self.rot_min_z, self.rot_max_z)
+        self.xRot = utilsmath.uniformBetweenValues(self.rot_min_x, self.rot_max_x)
+        self.yRot = utilsmath.uniformBetweenValues(self.rot_min_y, self.rot_max_y)
+        self.zRot = utilsmath.uniformBetweenValues(self.rot_min_z, self.rot_max_z)
 
-        zMat = utilsmath.getPitchTransform(zRot, self._device)
-        yMat = utilsmath.getYawTransform(yRot, self._device)
-        xMat = utilsmath.getRollTransform(xRot, self._device)
+        zMat = utilsmath.getPitchTransform(self.zRot, self._device)
+        yMat = utilsmath.getYawTransform(self.yRot, self._device)
+        xMat = utilsmath.getRollTransform(self.xRot, self._device)
 
         return transforms.toMat4x4(zMat @ yMat @ xMat)
 
 
     def sampleTranslation(self) -> torch.tensor:
         translationMatrix = torch.eye(4, device=self._device)
-        random_translation = utils.randomBetweenTensors(self.min_translation, self.max_translation)
+        self.random_translation = utils.randomBetweenTensors(self.min_translation, self.max_translation)
 
-        translationMatrix[0, 3] = random_translation[0]
-        translationMatrix[1, 3] = -random_translation[2]
-        translationMatrix[2, 3] = random_translation[1]
+        translationMatrix[0, 3] = self.random_translation[0]
+        translationMatrix[1, 3] = -self.random_translation[2]
+        translationMatrix[2, 3] = self.random_translation[1]
         self._last_translation = translationMatrix
         return translationMatrix
 
@@ -184,7 +184,7 @@ class Mesh(Transformable):
                  config: dict, 
                  device: torch.cuda.device = torch.device("cuda"),
                  base_path: str = None,
-                 sequential_animation: bool = False):
+                 sequential_animation: bool = True):
         Transformable.__init__(self, name, config, device)
 
         self.setVertices(vertex_data)
