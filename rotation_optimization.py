@@ -37,6 +37,7 @@ from tqdm import tqdm
 
 import pytorch3d.ops
 import imageio
+import matplotlib.pyplot as plt
 
 global_scene = None
 global_params = None
@@ -132,11 +133,12 @@ def main(last_iter, last_rays):
     model = RotationEncoder.PeakFinder(config=MODEL_CONFIG, device=DEVICE).to(DEVICE)
     model.train()
     
-    losses = Losses.Handler([
+    loss_funcs = Losses.Handler([
             #[Losses.VGGPerceptual().to(DEVICE), 0.0],
             [torch.nn.MSELoss().to(DEVICE), 1.0],
             #[torch.nn.L1Loss().to(DEVICE),  1.0]
             ])
+    loss_values = []
     
     Laser._rays.requires_grad = True
     sigma.requires_grad = True
@@ -155,100 +157,122 @@ def main(last_iter, last_rays):
         if mesh.name() == "Grid":
             target_mesh = mesh
             break
-    with torch.autograd.detect_anomaly():
-        for i in (progress_bar := tqdm(range(last_iter, config.iterations))):
-            start_time = time.time()
-            firefly_scene.randomize()
-            #target_rotation = torch.tensor(target_mesh.zRot, device=DEVICE)
+    #with torch.autograd.detect_anomaly():
 
-            # Generate depth image and look for peak of our Gaussian Blob
-            depth_image = depth.from_camera(global_scene, spp=1).torch().reshape(sensor_size[0], sensor_size[1])
-            depth_image = utils.normalize(depth_image)
-            cv2.imshow("Depth", depth_image.detach().cpu().numpy())
+    zero_gradient_counter = torch.zeros(Laser._rays.shape[0], dtype=torch.int32, device=DEVICE)
+    zero_grad_threshold = 120 // config.gradient_accumulation_steps
+    ray_mask = torch.ones(Laser._rays.shape[0], dtype=torch.int32, device=DEVICE)
+
+    for i in (progress_bar := tqdm(range(last_iter, config.iterations))):
+        start_time = time.time()
+        firefly_scene.randomize()
+        #target_rotation = torch.tensor(target_mesh.zRot, device=DEVICE)
+
+        # Generate depth image and look for peak of our Gaussian Blob
+        depth_image = depth.from_camera(global_scene, spp=1).torch().reshape(sensor_size[0], sensor_size[1])
+        depth_image = utils.normalize(depth_image)
+        cv2.imshow("Depth", depth_image.detach().cpu().numpy())
+
+        # Extract the 2D coordinate of the mean
+        mean_coordinate = (depth_image == torch.min(depth_image)).nonzero()[0].float().flip(dims=[0])
+
+        points = Laser.projectRaysToNDC()[:, 0:2]
+        points = points[ray_mask.nonzero().flatten()]
+        texture_init = rasterization.rasterize_points(points, sigma, tex_size)
+        texture_init = rasterization.softor(texture_init)
+
+        cv2.imshow("Tex", texture_init.detach().cpu().numpy())
+
+        hitpoints = cast_laser(Laser.originPerRay(), Laser.rays())
+
+        world_points = Laser.originPerRay() + hitpoints * Laser.rays()
+        #world_points = world_points[(hitpoints != 0).squeeze(), :]
+
+        world_points = world_points[ray_mask.nonzero().flatten()]
+
+        ndc_points = transforms.project_to_camera_space(global_params, world_points).squeeze()
+        sensor_size = torch.tensor(global_scene.sensors()[0].film().size(), device=DEVICE)
+
+        #print(ndc_points[:, 2:3].min(), ndc_points[:, 2:3].max())
+        # Max: 1.0520
+        # Min: 1.0493
+
+        ndc_point_coordinates = ndc_points[:, 0:2]
+        point_coordinates = ndc_point_coordinates*0.5 + 0.5
+        point_coordinates = point_coordinates * sensor_size
+
+        ndc_depth = ndc_points[:, 2:3]
+        ndc_depth = (ndc_points[:, 2:3] - 1.0493) / (1.0520 - 1.0493)
+        nearest_point_in_z = point_coordinates[ndc_depth.argmax()]
+
+        dists, idx, _ = pytorch3d.ops.knn_points(nearest_point_in_z.unsqueeze(0).unsqueeze(0), point_coordinates.unsqueeze(0), K=KNN_FEATURES)
+
+        neighbours_at_peak = ndc_point_coordinates[idx.flatten()]
+        neighbours_at_peak = neighbours_at_peak*0.5 + 0.5
+        neighbours_at_peak = neighbours_at_peak * sensor_size
+        #neighbours_at_peak = torch.concat([ndc_point_coordinates[idx.flatten()], ndc_depth[idx.flatten()]], dim=1)
+        neighbours_at_peak = torch.concat([neighbours_at_peak, ndc_depth[idx.flatten()]], dim=1)
+
+        pred_peak = model(neighbours_at_peak.flatten().unsqueeze(0))
+        
+        #image_coords_points_at_peak = ndc_point_coordinates[idx.flatten()]
+        #image_coords_points_at_peak = image_coords_points_at_peak*0.5 + 0.5
+        #image_coords_points_at_peak = image_coords_points_at_peak * sensor_size
+        #final_coordinate = image_coords_points_at_peak.sum(dim=0) / image_coords_points_at_peak.shape[0]
+        #print(nearest_point_in_z)
+        #cv2.waitKey(0)
+        per_point_depth = rasterization.rasterize_depth(ndc_point_coordinates, ndc_depth, sigma**2, sensor_size)
+        per_point_depth = rasterization.softor(per_point_depth)
+        #pred_rot = model(per_point_depth.unsqueeze(0).unsqueeze(0))
+        #print(pred_peak[0, 0].long().item(), mean_coordinate[0].long().item(), " ", pred_peak[0, 1].long().item(), mean_coordinate[1].long().item())
+        loss = loss_funcs(pred_peak, mean_coordinate) 
+
+        # Projected points should also not overlap
+        rasterized_points = rasterization.rasterize_points(ndc_points[:, 0:2], config.sigma, sensor_size)
+        #loss += torch.nn.L1Loss()(rasterization.softor(rasterized_points), rasterized_points.sum(dim=0)) * config.vicinity_penalty_lambda
+
+
+        loss = loss / config.gradient_accumulation_steps
+        '''
+        # Make sure that epipolar lines do not overlap too much
+        lines = Laser.render_epipolar_lines(sigma, tex_size)
+        epc_regularization = torch.nn.MSELoss()(rasterization.softor(lines), lines.sum(dim=0))
+        loss += epc_regularization * config.epipolar_constraint_lambda
+
+        # Projected points should also not overlap
+        rasterized_points = rasterization.rasterize_points(ndc_points[:, 0:2], config.sigma, sensor_size)
+        loss += torch.nn.MSELoss()(rasterization.softor(rasterized_points), rasterized_points.sum(dim=0)) * 0.0005
+
+        # Lets go for segmentation to projection similarity here
+        loss += torch.nn.MSELoss()(rasterization.softor(rasterized_points), segmentation) * config.perspective_segmentation_similarity_lambda
+        '''
+        loss_values.append(loss.item())
+        loss.backward()
+
+        if i > 0 and i % config.gradient_accumulation_steps == 0:
+
+            # Check which Laser rays do not have any gradient.
+            has_zero_grad = (Laser._rays.grad == 0).any(dim=1) * 1
             
-            # Extract the 2D coordinate of the mean
-            mean_coordinate = (depth_image == torch.min(depth_image)).nonzero()[0].float().flip(dims=[0])
+            # Increase count of zero grad rays by 1 and set everything else back to 0
+            zero_gradient_counter = (zero_gradient_counter + has_zero_grad) * has_zero_grad
 
-            points = Laser.projectRaysToNDC()[:, 0:2]
-            texture_init = rasterization.rasterize_points(points, sigma, tex_size)
-            texture_init = rasterization.softor(texture_init)
+            ray_mask = ray_mask * ~(zero_gradient_counter >= zero_grad_threshold)
 
-            cv2.imshow("Tex", texture_init.detach().cpu().numpy())
 
-            hitpoints = cast_laser(Laser.originPerRay(), Laser.rays())
-
-            world_points = Laser.originPerRay() + hitpoints * Laser.rays()
-            #world_points = world_points[(hitpoints != 0).squeeze(), :]
-
-            ndc_points = transforms.project_to_camera_space(global_params, world_points).squeeze()
-            sensor_size = torch.tensor(global_scene.sensors()[0].film().size(), device=DEVICE)
-
-            #print(ndc_points[:, 2:3].min(), ndc_points[:, 2:3].max())
-            # Max: 1.0520
-            # Min: 1.0493
-
-            ndc_point_coordinates = ndc_points[:, 0:2]
-            point_coordinates = ndc_point_coordinates*0.5 + 0.5
-            point_coordinates = point_coordinates * sensor_size
-
-            ndc_depth = ndc_points[:, 2:3]
-            ndc_depth = (ndc_points[:, 2:3] - 1.0493) / (1.0520 - 1.0493)
-            nearest_point_in_z = point_coordinates[ndc_depth.argmax()]
-
-            dists, idx, _ = pytorch3d.ops.knn_points(nearest_point_in_z.unsqueeze(0).unsqueeze(0), point_coordinates.unsqueeze(0), K=KNN_FEATURES)
-
-            #neighbours_at_peak = ndc_points[idx.flatten()]
-            neighbours_at_peak = torch.concat([ndc_point_coordinates[idx.flatten()], ndc_depth[idx.flatten()]], dim=1)
-
-            #pred_peak = model(neighbours_at_peak.flatten().unsqueeze(0))
-            #pred_peak = pred_peak*0.5 + 0.5
-            #pred_peak = pred_peak * sensor_size
-            
-            image_coords_points_at_peak = ndc_point_coordinates[idx.flatten()]
-            image_coords_points_at_peak = image_coords_points_at_peak*0.5 + 0.5
-            image_coords_points_at_peak = image_coords_points_at_peak * sensor_size
-            final_coordinate = image_coords_points_at_peak.sum(dim=0) / image_coords_points_at_peak.shape[0]
-            #print(nearest_point_in_z)
-            #cv2.waitKey(0)
-            per_point_depth = rasterization.rasterize_depth(ndc_point_coordinates, ndc_depth, sigma**2, sensor_size)
-            per_point_depth = rasterization.softor(per_point_depth)
-            #pred_rot = model(per_point_depth.unsqueeze(0).unsqueeze(0))
-            #print(pred_peak, mean_coordinate)
-            loss = losses(final_coordinate, mean_coordinate) / config.gradient_accumulation_steps
-
-            # Projected points should also not overlap
-            #rasterized_points = rasterization.rasterize_points(ndc_points[:, 0:2], config.sigma*2, sensor_size)
-            #loss += torch.nn.MSELoss()(rasterization.softor(rasterized_points), rasterized_points.sum(dim=0)) * config.vicinity_penalty_lambda
-
-            '''
-            # Make sure that epipolar lines do not overlap too much
-            lines = Laser.render_epipolar_lines(sigma, tex_size)
-            epc_regularization = torch.nn.MSELoss()(rasterization.softor(lines), lines.sum(dim=0))
-            loss += epc_regularization * config.epipolar_constraint_lambda
-
-            # Projected points should also not overlap
-            rasterized_points = rasterization.rasterize_points(ndc_points[:, 0:2], config.sigma, sensor_size)
-            loss += torch.nn.MSELoss()(rasterization.softor(rasterized_points), rasterized_points.sum(dim=0)) * 0.0005
-
-            # Lets go for segmentation to projection similarity here
-            loss += torch.nn.MSELoss()(rasterization.softor(rasterized_points), segmentation) * config.perspective_segmentation_similarity_lambda
-            '''
-            
-            loss.backward()
-
-            if i > 0 and i % config.gradient_accumulation_steps == 0:
-                optim.step()
-                scheduler.step()
-                optim.zero_grad()
+            optim.step()
+            scheduler.step()
+            optim.zero_grad()
 
             progress_bar.set_description("Loss: {0:.4f}, Sigma: {1:.4f}".format(loss.item(), sigma.detach().cpu().numpy()[0]))
             with torch.no_grad():
+
                 render_im = render(texture_init.unsqueeze(-1))
                 render_im = torch.clamp(render_im, 0, 1)[:, :, [2, 1, 0]].cpu().numpy()
                 cv2.imshow("Render", render_im)
-                cv2.waitKey(1)
-
-                Laser.randomize_laser_out_of_bounds()
+                #cv2.waitKey(1)
+                cv2.imwrite("RotBlobOptimization/{:05d}.png".format(i//config.gradient_accumulation_steps), (render_im*255).astype(np.uint8))
+                Laser.clamp_to_fov(clamp_val=0.99)
                 Laser.normalize_rays()
                 sparse_depth = torch.clamp(per_point_depth, 0, 1)
                 sparse_depth = sparse_depth.detach().cpu().numpy() * 255
@@ -257,10 +281,15 @@ def main(last_iter, last_rays):
                 cv2.imshow("Points", sparse_depth)
                 cv2.waitKey(1)
 
-            if time.time() - start_time > 0.5:
-                restart = True
-                print("Restarting.")
-                break
+        if time.time() - start_time > 0.5:
+            restart = False
+            print("Restarting.")
+            #break
+
+
+    plt.plot(loss_values)
+    plt.show()
+
 
     printer.Printer.OKG("Optimization done. Initiating post-processing.")
     

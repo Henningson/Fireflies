@@ -132,7 +132,7 @@ class Laser(Camera.Camera):
     def initPoissonDiskSamples(self, width, height, radius):
         return None
 
-    def clamp_to_fov(self, clamp_val: float = 0.95, epsilon: float = 0.001) -> None:
+    def clamp_to_fov(self, clamp_val: float = 0.95, epsilon: float = 0.0001) -> None:
         # TODO: Check, if laser beam falls out of fov. If it does, clamp it back.
         # If randomize is set, spawn a new random laser inside NDC.
         # Else, clamp it to the edge.

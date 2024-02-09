@@ -267,7 +267,7 @@ if __name__ == "__main__":
     import Graphics.rasterization as rasterization
     from argparse import Namespace
 
-    base_path = "scenes/RotBlob/"
+    base_path = "scenes/Vocal Fold/"
 
 
     config = utils.read_config_yaml(os.path.join(base_path, "config.yml"))
@@ -286,7 +286,7 @@ if __name__ == "__main__":
 
     firefly_scene = Scene(mitsuba_params, base_path, sequential_animation=True)
 
-    laser_init = LaserEstimation.initialize_laser(mitsuba_scene, mitsuba_params, firefly_scene, config, "GRID", device="cuda")
+    laser_init = LaserEstimation.initialize_laser(mitsuba_scene, mitsuba_params, firefly_scene, config, "SMARTY", device="cuda")
     points = laser_init.projectRaysToNDC()[:, 0:2]
     texture_init = rasterization.rasterize_points(points, sigma, texture_size)
     texture_init = rasterization.softor(texture_init)
@@ -304,6 +304,6 @@ if __name__ == "__main__":
         render_im = mi.render(mitsuba_scene)
         render_im = torch.clamp(render_im.torch(), 0, 1)[:, :, [2, 1, 0]].cpu().numpy()
         cv2.imshow("Render", render_im)
-        cv2.waitKey(0)
+        cv2.waitKey(1)
 
  
