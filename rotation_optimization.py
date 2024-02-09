@@ -124,7 +124,7 @@ def main(last_iter, last_rays):
     if last_rays is not None:
         Laser._rays = last_rays.to(DEVICE)
 
-    KNN_FEATURES = 6
+    KNN_FEATURES = 2
 
     # Init U-Net and params
     MODEL_CONFIG = {

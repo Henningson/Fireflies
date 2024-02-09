@@ -1,5 +1,6 @@
 import torch
 import matplotlib.pyplot as plt
+import numpy as np
 
 torch.manual_seed(0)
 
@@ -135,18 +136,31 @@ def sum(texture: torch.tensor, dim=0, keepdim: bool = False) -> torch.tensor:
 
 
 
+
+def get_mpl_colormap(cmap):
+    # Initialize the matplotlib color map
+    sm = plt.cm.ScalarMappable(cmap=cmap)
+
+    # Obtain linear color range
+    color_range = sm.to_rgba(np.linspace(0, 1, 256), bytes=True)[:,2::-1]
+
+    return color_range.reshape(256, 1, 3)
+
+
+
 def test_point_reg(reduce_overlap: bool = True):
     import cv2
     import numpy as np
     from tqdm import tqdm
     from pygifsicle import optimize
     import imageio
+    import matplotlib.colors
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
     
     points = (torch.rand([500, 2], device=device) - 0.5) * 2.0
     points.requires_grad = True
-    sigma = torch.tensor([10.0], device=device)
+    sigma = torch.tensor([150.0], device=device)
     texture_size = torch.tensor([512, 512], device=device)
     loss_func = torch.nn.L1Loss()
 
@@ -172,7 +186,12 @@ def test_point_reg(reduce_overlap: bool = True):
         with torch.no_grad():
             points[points >= 1.0] = 0.999
             points[points <= -1.0] = -0.999
-            np_points = cv2.applyColorMap((softored.detach().cpu().numpy()*255).astype(np.uint8), cv2.COLORMAP_VIRIDIS)
+
+            # Apply custom colormap
+            colors = [(0.176, 0.318, 0.486), (0, 0.69, 0.314)]  # R -> G -> B
+            n_bins = 255  # Discretizes the interpolation into bins
+            cmap = matplotlib.colors.LinearSegmentedColormap.from_list("blueishtogreen", colors, N=n_bins)
+            np_points = cv2.applyColorMap((softored.detach().cpu().numpy()*255).astype(np.uint8), get_mpl_colormap(cmap))
             images.append(np_points[:, :, [2, 1, 0]])
 
             if i == 0 or i == opt_steps - 1:
@@ -191,6 +210,7 @@ def test_line_reg():
     from tqdm import tqdm
     from pygifsicle import optimize
     import imageio
+    import matplotlib.colors
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
 
@@ -242,7 +262,11 @@ def test_line_reg():
             location_vector[p0 < -1.0] += 0.01
             location_vector[p1 > 1.0] -= 0.01
             location_vector[p1 < -1.0] += 0.01
-            np_lines = cv2.applyColorMap((softored.detach().cpu().numpy()*255).astype(np.uint8), cv2.COLORMAP_VIRIDIS)
+
+            colors = [(0.176, 0.318, 0.486), (0, 0.69, 0.314)]  # R -> G -> B
+            n_bins = 255  # Discretizes the interpolation into bins
+            cmap = matplotlib.colors.LinearSegmentedColormap.from_list("blueishtogreen", colors, N=n_bins)
+            np_lines = cv2.applyColorMap((softored.detach().cpu().numpy()*255).astype(np.uint8), get_mpl_colormap(cmap))
 
             if i == 0 or i == opt_steps - 1:
                 cv2.imwrite("assets/line_reduced_overlap{0}.png".format(i), np_lines)
