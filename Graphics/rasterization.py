@@ -4,15 +4,12 @@ import numpy as np
 
 torch.manual_seed(0)
 
-# We assume points to be in NDC [-1, 1]
+# We assume points to be in camera space [0, 1]
 def rasterize_points(points: torch.tensor, sigma: float, texture_size: torch.tensor, device: torch.cuda.device = torch.device("cuda")) -> torch.tensor:
     tex = torch.zeros(texture_size.tolist(), dtype=torch.float32, device=device)
     tex = tex[None, ...]
     tex = tex.repeat((points.shape[0], 1, 1, 1))
 
-    # Convert points to 0 -> 1
-    points = points*0.5 + 0.5
-    
     
     # Somewhere between [0, texture_size] but in float
     points *= texture_size
@@ -55,9 +52,6 @@ def rasterize_depth(points: torch.tensor, depth_vals: torch.tensor, sigma: float
     tex = torch.zeros(texture_size.tolist(), dtype=torch.float32, device=device)
     tex = tex[None, ...]
     tex = tex.repeat((points.shape[0], 1, 1, 1))
-
-    # Convert points to 0 -> 1
-    points = points*0.5 + 0.5
     
     
     # Somewhere between [0, texture_size] but in float
@@ -87,9 +81,6 @@ def rasterize_lines(lines: torch.tensor, sigma: float, texture_size: torch.tenso
     tex = torch.zeros(texture_size.tolist(), dtype=torch.float32, device=device)
     tex = tex[None, ...]
     tex = tex.repeat((lines.shape[0], 1, 1, 1))
-
-    # Convert points to 0 -> 1
-    lines = lines*0.5 + 0.5
 
     lines_start = lines[:, 0, :]
     lines_end = lines[:, 1, :]
@@ -152,15 +143,13 @@ def test_point_reg(reduce_overlap: bool = True):
     import cv2
     import numpy as np
     from tqdm import tqdm
-    from pygifsicle import optimize
     import imageio
     import matplotlib.colors
-
     device = "cuda" if torch.cuda.is_available() else "cpu"
     
     points = (torch.rand([500, 2], device=device) - 0.5) * 2.0
     points.requires_grad = True
-    sigma = torch.tensor([150.0], device=device)
+    sigma = torch.tensor([125.0], device=device)
     texture_size = torch.tensor([512, 512], device=device)
     loss_func = torch.nn.L1Loss()
 
@@ -188,19 +177,34 @@ def test_point_reg(reduce_overlap: bool = True):
             points[points <= -1.0] = -0.999
 
             # Apply custom colormap
-            colors = [(0.176, 0.318, 0.486), (0, 0.69, 0.314)]  # R -> G -> B
-            n_bins = 255  # Discretizes the interpolation into bins
-            cmap = matplotlib.colors.LinearSegmentedColormap.from_list("blueishtogreen", colors, N=n_bins)
-            np_points = cv2.applyColorMap((softored.detach().cpu().numpy()*255).astype(np.uint8), get_mpl_colormap(cmap))
-            images.append(np_points[:, :, [2, 1, 0]])
+            colors = [(0.0, 0.1921, 0.4156), (0, 0.69, 0.314)]  # R -> G -> B
+            
+            fig = plt.figure(frameon=False)
+            fig.set_size_inches(10, 10)
+            ax = plt.Axes(fig, [0., 0., 1., 1.])
+            ax.set_axis_off()
+            ax.set_aspect(aspect='equal')
+            ax.set_facecolor(colors[0])
+            fig.add_axes(ax)
+
+            ax.scatter(points.detach().cpu().numpy()[:, 0], points.detach().cpu().numpy()[:, 1], s=60.0*10, color=colors[0])
+            fig.canvas.draw()
+            img_plot = np.array(fig.canvas.renderer.buffer_rgba())
+            np_points = img_plot
+            images.append(np_points)
 
             if i == 0 or i == opt_steps - 1:
-                cv2.imwrite("assets/point_reduced_overlap{0}.png".format(i) if reduce_overlap else "assets/point_increased_overlap{0}.png".format(i), np_points)
+                fig.savefig("assets/point_reduced_overlap{0}.eps".format(i) if reduce_overlap else "assets/point_increased_overlap{0}.eps".format(i), 
+                    facecolor=ax.get_facecolor(), 
+                    edgecolor='none',
+                    bbox_inches = 'tight',
+                    pad_inches=0)
+            plt.close()
             
-            cv2.imshow("Optim Lines", np_points)
-            cv2.waitKey(1)
+            #cv2.imshow("Optim Lines", np_points)
+            #cv2.waitKey(1)
             #lines.requires_grad = True
-    imageio.v3.imwrite("point_regularization.mp4", np.stack(images, axis=0), fps=25)
+    imageio.v3.imwrite("assets/point_regularization.mp4", np.stack(images, axis=0), fps=25)
 
 
 
@@ -208,7 +212,6 @@ def test_line_reg():
     import cv2
     import numpy as np
     from tqdm import tqdm
-    from pygifsicle import optimize
     import imageio
     import matplotlib.colors
 
@@ -263,19 +266,33 @@ def test_line_reg():
             location_vector[p1 > 1.0] -= 0.01
             location_vector[p1 < -1.0] += 0.01
 
-            colors = [(0.176, 0.318, 0.486), (0, 0.69, 0.314)]  # R -> G -> B
-            n_bins = 255  # Discretizes the interpolation into bins
-            cmap = matplotlib.colors.LinearSegmentedColormap.from_list("blueishtogreen", colors, N=n_bins)
-            np_lines = cv2.applyColorMap((softored.detach().cpu().numpy()*255).astype(np.uint8), get_mpl_colormap(cmap))
+            colors = [(0.0, 0.1921, 0.4156), (0, 0.69, 0.314)]  # R -> G -> B
+            fig = plt.figure(frameon=False)
+            fig.set_size_inches(10, 10)
+            ax = plt.Axes(fig, [0.0, 0.0, 1.0, 1.0])
+            ax.set_xlim([-1,1])
+            ax.set_ylim([-1,1])
+            ax.set_axis_off()
+            ax.set_aspect(aspect='equal')
+            fig.add_axes(ax)
+
+            lines_copy = lines.transpose(1, 2).detach().cpu().numpy()
+            for j in range(lines_copy.shape[0]):
+                ax.plot(lines_copy[j, 0, :], lines_copy[j, 1, :], c=colors[0], linewidth=9.5, solid_capstyle='round')# c=colors[0], linewidth=60)
+
+            fig.canvas.draw()
+            img_plot = np.array(fig.canvas.renderer.buffer_rgba())
+            np_points = img_plot
+            images.append(np_points)
 
             if i == 0 or i == opt_steps - 1:
-                cv2.imwrite("assets/line_reduced_overlap{0}.png".format(i), np_lines)
+                fig.savefig("assets/line_reduced_overlap{0}.eps".format(i), 
+                    facecolor=ax.get_facecolor(), 
+                    edgecolor='none',
+                    bbox_inches = 'tight',
+                    pad_inches=0)
+            plt.close()
 
-
-            images.append(np_lines[:, :, [2, 1, 0]])
-            cv2.imshow("Optim Lines", np_lines)
-            cv2.waitKey(1)
-            #lines.requires_grad = True
     imageio.v3.imwrite("assets/line_regularization.mp4", np.stack(images, axis=0), fps=25)
     #optimize("line_regularization.gif")
 
@@ -350,7 +367,7 @@ def test_square_reg():
             cv2.waitKey(1)
 
 if __name__ == "__main__":
-    #test_point_reg(reduce_overlap=True)
+    test_point_reg(reduce_overlap=True)
     #test_point_reg(reduce_overlap=False)
     test_line_reg()
     #main()

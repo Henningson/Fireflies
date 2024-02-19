@@ -119,12 +119,26 @@ def main(last_iter, last_rays):
                                   device=DEVICE)
     firefly_scene.randomize()
 
+    camera_sensor = global_scene.sensors()[0]
+    camera_x_fov = global_params['PerspectiveCamera.x_fov']
+    camera_near_clip = global_params['PerspectiveCamera.near_clip']
+    camera_far_clip = global_params['PerspectiveCamera.far_clip']
+
+
+    projector_sensor = global_scene.sensors()[1]
+    projector_x_fov = global_params['PerspectiveCamera_1.x_fov']
+    projector_near_clip = global_params['PerspectiveCamera_1.near_clip']
+    projector_far_clip = global_params['PerspectiveCamera_1.far_clip']
+
     
-    Laser = LaserEstimation.initialize_laser(global_scene, global_params, firefly_scene, config, "GRID", DEVICE)
+    K_CAMERA = mi.perspective_projection(camera_sensor.film().size(), camera_sensor.film().crop_size(), camera_sensor.film().crop_offset(), camera_x_fov, camera_near_clip, camera_far_clip).matrix.torch()[0]
+    #K_PROJECTOR = mi.perspective_projection(projector_sensor.film().size(), projector_sensor.film().crop_size(), projector_sensor.film().crop_offset(), projector_x_fov, projector_near_clip, projector_far_clip).matrix.torch()[0]
+    
+    Laser = LaserEstimation.initialize_laser(global_scene, global_params, firefly_scene, config, config.pattern_initialization, DEVICE)
     if last_rays is not None:
         Laser._rays = last_rays.to(DEVICE)
 
-    KNN_FEATURES = 2
+    KNN_FEATURES = config.knn_features
 
     # Init U-Net and params
     MODEL_CONFIG = {
@@ -145,10 +159,11 @@ def main(last_iter, last_rays):
 
     optim = torch.optim.Adam([
         {'params': model.parameters(),  'lr': config.lr_model}, 
-        {'params': Laser._rays,         'lr': config.lr_laser}
+        {'params': Laser._rays,         'lr': 0.0}
         #{'params': sigma,               'lr': config.lr_sigma * 1000000.0}
         ])
-    scheduler = torch.optim.lr_scheduler.PolynomialLR(optim, total_iters = config.iterations, power=0.99)
+    
+    #scheduler = torch.optim.lr_scheduler.PolynomialLR(optim, total_iters = config.iterations, power=0.99)
     sensor_size = torch.tensor(global_scene.sensors()[0].film().size(), device=DEVICE)
     tex_size = torch.tensor(global_scene.sensors()[1].film().size(), device=DEVICE)
     
@@ -160,10 +175,13 @@ def main(last_iter, last_rays):
     #with torch.autograd.detect_anomaly():
 
     zero_gradient_counter = torch.zeros(Laser._rays.shape[0], dtype=torch.int32, device=DEVICE)
-    zero_grad_threshold = 120 // config.gradient_accumulation_steps
+    zero_grad_threshold = config.zero_grad_threshold
     ray_mask = torch.ones(Laser._rays.shape[0], dtype=torch.int32, device=DEVICE)
 
     for i in (progress_bar := tqdm(range(last_iter, config.iterations))):
+        if i == config.warmup_iterations:
+            optim.param_groups[1]['lr'] = config.lr_laser
+
         start_time = time.time()
         firefly_scene.randomize()
         #target_rotation = torch.tensor(target_mesh.zRot, device=DEVICE)
@@ -190,46 +208,32 @@ def main(last_iter, last_rays):
 
         world_points = world_points[ray_mask.nonzero().flatten()]
 
-        ndc_points = transforms.project_to_camera_space(global_params, world_points).squeeze()
+        CAMERA_WORLD = global_params["PerspectiveCamera.to_world"].matrix.torch()[0]
+        
+
+        world_points_hat = transforms.transform_points(world_points, CAMERA_WORLD.inverse()).squeeze()
+        ndc_points = transforms.transform_points(world_points_hat, K_CAMERA).squeeze()
         sensor_size = torch.tensor(global_scene.sensors()[0].film().size(), device=DEVICE)
 
-        #print(ndc_points[:, 2:3].min(), ndc_points[:, 2:3].max())
-        # Max: 1.0520
-        # Min: 1.0493
-
-        ndc_point_coordinates = ndc_points[:, 0:2]
-        point_coordinates = ndc_point_coordinates*0.5 + 0.5
+        point_coordinates = ndc_points[:, 0:2]
         point_coordinates = point_coordinates * sensor_size
 
         ndc_depth = ndc_points[:, 2:3]
-        ndc_depth = (ndc_points[:, 2:3] - 1.0493) / (1.0520 - 1.0493)
-        nearest_point_in_z = point_coordinates[ndc_depth.argmax()]
+        nearest_point_in_z = point_coordinates[ndc_depth.argmin()]
 
         dists, idx, _ = pytorch3d.ops.knn_points(nearest_point_in_z.unsqueeze(0).unsqueeze(0), point_coordinates.unsqueeze(0), K=KNN_FEATURES)
 
-        neighbours_at_peak = ndc_point_coordinates[idx.flatten()]
-        neighbours_at_peak = neighbours_at_peak*0.5 + 0.5
-        neighbours_at_peak = neighbours_at_peak * sensor_size
-        #neighbours_at_peak = torch.concat([ndc_point_coordinates[idx.flatten()], ndc_depth[idx.flatten()]], dim=1)
-        neighbours_at_peak = torch.concat([neighbours_at_peak, ndc_depth[idx.flatten()]], dim=1)
+        neighbours_at_peak = torch.concat([point_coordinates[idx.flatten()], ndc_depth[idx.flatten()]], dim=1)
 
         pred_peak = model(neighbours_at_peak.flatten().unsqueeze(0))
         
-        #image_coords_points_at_peak = ndc_point_coordinates[idx.flatten()]
-        #image_coords_points_at_peak = image_coords_points_at_peak*0.5 + 0.5
-        #image_coords_points_at_peak = image_coords_points_at_peak * sensor_size
-        #final_coordinate = image_coords_points_at_peak.sum(dim=0) / image_coords_points_at_peak.shape[0]
-        #print(nearest_point_in_z)
-        #cv2.waitKey(0)
-        per_point_depth = rasterization.rasterize_depth(ndc_point_coordinates, ndc_depth, sigma**2, sensor_size)
+        per_point_depth = rasterization.rasterize_depth(ndc_points[:, 0:2], ndc_depth, sigma**2, sensor_size)
         per_point_depth = rasterization.softor(per_point_depth)
-        #pred_rot = model(per_point_depth.unsqueeze(0).unsqueeze(0))
-        #print(pred_peak[0, 0].long().item(), mean_coordinate[0].long().item(), " ", pred_peak[0, 1].long().item(), mean_coordinate[1].long().item())
         loss = loss_funcs(pred_peak, mean_coordinate) 
 
         # Projected points should also not overlap
-        rasterized_points = rasterization.rasterize_points(ndc_points[:, 0:2], config.sigma, sensor_size)
-        #loss += torch.nn.L1Loss()(rasterization.softor(rasterized_points), rasterized_points.sum(dim=0)) * config.vicinity_penalty_lambda
+        rasterized_points = rasterization.rasterize_points(ndc_points[:, 0:2], config.sigma*3, sensor_size)
+        loss += torch.nn.L1Loss()(rasterization.softor(rasterized_points), rasterized_points.sum(dim=0)) * config.vicinity_penalty_lambda
 
 
         loss = loss / config.gradient_accumulation_steps
@@ -261,7 +265,7 @@ def main(last_iter, last_rays):
 
 
             optim.step()
-            scheduler.step()
+            #scheduler.step()
             optim.zero_grad()
 
             progress_bar.set_description("Loss: {0:.4f}, Sigma: {1:.4f}".format(loss.item(), sigma.detach().cpu().numpy()[0]))
@@ -269,7 +273,12 @@ def main(last_iter, last_rays):
 
                 render_im = render(texture_init.unsqueeze(-1))
                 render_im = torch.clamp(render_im, 0, 1)[:, :, [2, 1, 0]].cpu().numpy()
-                cv2.imshow("Render", render_im)
+                render_circle = cv2.circle(render_im, pred_peak.detach().cpu().numpy().flatten().astype(np.uint8), 3, (0, 255, 0), -1)
+                render_circle = cv2.circle(render_circle, mean_coordinate.detach().cpu().numpy().flatten().astype(np.uint8), 3, (0, 0, 255), -1)
+                render_circle = cv2.circle(render_circle, point_coordinates[idx.flatten()][0].detach().cpu().numpy().flatten().astype(np.uint8), 3, (255, 255, 0), -1)
+                render_circle = cv2.circle(render_circle, point_coordinates[idx.flatten()][1].detach().cpu().numpy().flatten().astype(np.uint8), 3, (255, 255, 0), -1)
+
+                cv2.imshow("Render", render_circle)
                 #cv2.waitKey(1)
                 cv2.imwrite("RotBlobOptimization/{:05d}.png".format(i//config.gradient_accumulation_steps), (render_im*255).astype(np.uint8))
                 Laser.clamp_to_fov(clamp_val=0.99)
@@ -277,7 +286,7 @@ def main(last_iter, last_rays):
                 sparse_depth = torch.clamp(per_point_depth, 0, 1)
                 sparse_depth = sparse_depth.detach().cpu().numpy() * 255
                 sparse_depth = sparse_depth.astype(np.uint8)
-
+                print(point_coordinates[idx.flatten()])
                 cv2.imshow("Points", sparse_depth)
                 cv2.waitKey(1)
 

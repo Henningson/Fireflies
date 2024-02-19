@@ -4,6 +4,8 @@ mi.set_variant("cuda_ad_rgb")
 import drjit as dr
 import Graphics.LaserEstimation as LaserEstimation
 import cv2
+import numpy as np
+import Utils.utils as utils
 
 from tqdm import tqdm
 
@@ -177,9 +179,11 @@ def random_depth_maps(firefly_scene, mi_scene, num_maps: int = 100, spp: int = 1
 
         depth_map = from_camera_non_wrapped(mi_scene, spp=1)
 
-        vis_depth = depth_map.torch().reshape(im_size[1], im_size[0]).clone()
-        vis_depth /= vis_depth.max()
-        cv2.imshow("Depth", vis_depth.detach().cpu().numpy())
+        vis_depth = torch.log(depth_map.torch().reshape(im_size[1], im_size[0]).clone())
+        vis_depth = utils.normalize(vis_depth)
+        vis_depth = ((1 - vis_depth.detach().cpu().numpy()) * 255).astype(np.uint8)
+        colored = cv2.applyColorMap(vis_depth, cv2.COLORMAP_INFERNO)
+        cv2.imshow("Depth", colored)
         cv2.waitKey(1)
 
 

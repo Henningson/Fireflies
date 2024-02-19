@@ -13,11 +13,17 @@ class Camera:
         }
 
 
-    def __init__(self, transform: Transformable.Transformable, fov: float, near_clip: float = 0.01, far_clip: float = 1000.0, device: torch.cuda.device = torch.device("cuda")):
+    def __init__(self, 
+                 transform: Transformable.Transformable, 
+                 perspective: torch.tensor, 
+                 fov: float, 
+                 near_clip: float = 0.01, 
+                 far_clip: float = 1000.0, 
+                 device: torch.cuda.device = torch.device("cuda")):
         self.device = device
         
         self._transformable = transform
-        self._perspective = Utils.utils.build_projection_matrix(fov, near_clip, far_clip).to(self.device)
+        self._perspective = perspective
         self._near_clip = near_clip
         self._far_clip = far_clip
         self._fov = fov

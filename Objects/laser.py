@@ -56,7 +56,7 @@ class Laser(Camera.Camera):
 
         poisson_radius = math.sqrt((image_size_x * image_size_y) / (math.pi * num_beams))
         poisson_radius += poisson_radius/4.0
-        im = np.ones([image_size_y, image_size_x]) * poisson_radius
+        im = np.ones([image_size_x, image_size_y]) * poisson_radius
         num_samples, poisson_samples = bridson.poissonDiskSampling(im)
         #print(len(poisson_samples))
         poisson_samples = torch.tensor(poisson_samples, device=device)
@@ -88,14 +88,16 @@ class Laser(Camera.Camera):
 
     def __init__(self, 
                  transformable: Transformable.Transformable, 
-                 ray_directions, 
+                 ray_directions,
+                 perspective: torch.tensor,
                  max_fov: float, 
                  near_clip: float = 0.01, 
                  far_clip: float = 1000.0, 
                  device: torch.cuda.device = torch.device("cuda")):
         
-        Camera.Camera.__init__(self, transformable, max_fov, near_clip, far_clip, device)
+        Camera.Camera.__init__(self, transformable, perspective, max_fov, near_clip, far_clip, device)
         self._rays = ray_directions.to(self.device)
+        self.device = device
     
 
     def rays(self) -> torch.tensor:
@@ -138,7 +140,7 @@ class Laser(Camera.Camera):
         # Else, clamp it to the edge.
         ndc_coords = self.projectRaysToNDC()
         xy_coords = ndc_coords[:, 0:2]
-        out_of_bounds_indices = ((xy_coords > 1.0 - epsilon) | (xy_coords < -1.0 + epsilon)).any(dim=1)
+        out_of_bounds_indices = ((xy_coords > 1.0 - epsilon) | (xy_coords < 0.0 + epsilon)).any(dim=1)
         
         out_of_bounds_points = ndc_coords[out_of_bounds_indices]
         
@@ -157,15 +159,15 @@ class Laser(Camera.Camera):
         # No need to transform as rays are in laser space anyway
         ndc_coords = transforms.transform_points(new_rays, self._perspective)
         xy_coords = ndc_coords[:, 0:2]
-        out_of_bounds_indices = ((xy_coords >= 1.0) | (xy_coords <= -1.0)).any(dim=1)
+        out_of_bounds_indices = ((xy_coords >= 1.0) | (xy_coords <= 0.0)).any(dim=1)
         
         out_of_bounds_points = ndc_coords[out_of_bounds_indices]
         
         if out_of_bounds_points.nelement() == 0:
             return 0
         
-        new_ray_point = torch.rand(out_of_bounds_points.shape, device=self.device) * 2.0 - 1.0
-        new_ray_point[:, 2] = 1.0
+        new_ray_point = torch.rand(out_of_bounds_points.shape, device=self.device)
+        new_ray_point[:, 2] = -1.0
 
         clamped_rays = self.projectNDCPointsToWorld(new_ray_point)
         new_rays[out_of_bounds_indices] = clamped_rays
@@ -184,8 +186,8 @@ class Laser(Camera.Camera):
         if out_of_bounds_points.nelement() == 0:
             return 0
         
-        new_ray_point = torch.rand(out_of_bounds_points.shape, device=self.device) * 2.0 - 1.0
-        new_ray_point[:, 2] = 1.0
+        new_ray_point = torch.rand(out_of_bounds_points.shape, device=self.device)
+        new_ray_point[:, 2] = -1.0
         
         clamped_rays = self.projectNDCPointsToWorld(new_ray_point)
         new_rays[out_of_bounds_indices] = clamped_rays
@@ -209,11 +211,13 @@ class Laser(Camera.Camera):
 
     def projectRaysToNDC(self) -> torch.tensor:
         #rays_in_world = transforms_torch.transform_directions(self._rays, self._to_world)
-        return transforms.transform_points(self._rays, self._perspective)
+        FLIP_Y = torch.tensor([[1.0, 0.0, 0.0, 0.0], [0.0, -1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]], device=self.device)
+        return transforms.transform_points(self._rays, self._perspective @ FLIP_Y)
     
 
     def projectNDCPointsToWorld(self, points: torch.tensor) -> torch.tensor:
-        return transforms.transform_points(points, self._perspective.inverse())
+        FLIP_Y = torch.tensor([[1.0, 0.0, 0.0, 0.0], [0.0, -1.0, 0.0, 0.0], [0.0, 0.0, 1.0, 0.0], [0.0, 0.0, 0.0, 1.0]], device=self.device)
+        return transforms.transform_points(points, self._perspective.inverse() @ FLIP_Y)
     
 
     def generateTexture(self, sigma: float, texture_size: List[int]) -> torch.tensor:
@@ -309,7 +313,7 @@ class DeprecatedLaser:
 
     def initRandomRays(self):
         # Spawn random points in [-1.0, 1.0]
-        spawned_points = torch.rand(self._rays.shape, device=self.device) * 2.0 - 1.0
+        spawned_points = torch.rand(self._rays.shape, device=self.device)
 
         # Set Z to 1
         spawned_points[:, 2] = 1.0
@@ -388,7 +392,6 @@ class DeprecatedLaser:
         epipolar_min = self.originPerRay() + self._near_clip * self.rays()
         epipolar_max = self.originPerRay() + self._far_clip  * self.rays()
 
-        K = utils.build_projection_matrix(params['PerspectiveCamera.x_fov'], params['PerspectiveCamera.near_clip'], params['PerspectiveCamera.far_clip'])
         CAMERA_TO_WORLD = params["PerspectiveCamera.to_world"].matrix.torch()
         
         
@@ -396,11 +399,11 @@ class DeprecatedLaser:
         CAMERA_TO_WORLD = CAMERA_TO_WORLD.inverse()
 
         epipolar_max = transforms.transform_points(epipolar_max, CAMERA_TO_WORLD)
-        epipolar_max = transforms.transform_points(epipolar_max, K)
+        epipolar_max = transforms.transform_points(epipolar_max, self._perspective)
         epipolar_max = transforms.convert_points_from_homogeneous(epipolar_max)[0]
 
         epipolar_min = transforms.transform_points(epipolar_min, CAMERA_TO_WORLD)
-        epipolar_min = transforms.transform_points(epipolar_min, K)
+        epipolar_min = transforms.transform_points(epipolar_min, self._perspective)
         epipolar_min = transforms.convert_points_from_homogeneous(epipolar_min)[0]
         
         lines = torch.stack([epipolar_min, epipolar_max], dim=1)

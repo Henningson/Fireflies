@@ -267,7 +267,7 @@ if __name__ == "__main__":
     import Graphics.rasterization as rasterization
     from argparse import Namespace
 
-    base_path = "scenes/Vocal Fold/"
+    base_path = "scenes/FLAME SHAPE/"
 
 
     config = utils.read_config_yaml(os.path.join(base_path, "config.yml"))
@@ -285,13 +285,30 @@ if __name__ == "__main__":
     texture_size = torch.tensor(mitsuba_scene.sensors()[1].film().size(), device="cuda")
 
     firefly_scene = Scene(mitsuba_params, base_path, sequential_animation=True)
+    firefly_scene.randomize()
 
-    laser_init = LaserEstimation.initialize_laser(mitsuba_scene, mitsuba_params, firefly_scene, config, "SMARTY", device="cuda")
+    laser_init = LaserEstimation.initialize_laser(mitsuba_scene, mitsuba_params, firefly_scene, config, config.pattern_initialization, device="cuda")
     points = laser_init.projectRaysToNDC()[:, 0:2]
+
+
+    colors = [(0.0, 0.1921, 0.4156), (0, 0.69, 0.314)]  # R -> G -> B
+    fig = plt.figure(frameon=False)
+    fig.set_size_inches(16/16*10, 9/16*10)
+    ax = plt.Axes(fig, [0.0, 0.0, 1.0, 1.0])
+    ax.set_xlim([0,1])
+    ax.set_ylim([0,1])
+    ax.set_axis_off()
+    fig.add_axes(ax)
+    ax.scatter(points.detach().cpu().numpy()[:, 0], points.detach().cpu().numpy()[:, 1], s=60.0*2.5, color=colors[0])
+    fig.canvas.draw()
+    img_plot = np.array(fig.canvas.renderer.buffer_rgba())
+    cv2.imshow("Sexy Tex", img_plot[:, :, [2, 1, 0]])
+
     texture_init = rasterization.rasterize_points(points, sigma, texture_size)
     texture_init = rasterization.softor(texture_init)
     #texture_init = torch.flipud(texture_init)
 
+    cv2.imshow("Wat", texture_init.detach().cpu().numpy())
     mitsuba_params['tex.data'] = texture_init.unsqueeze(-1)
 
     #firefly_scene.randomize()

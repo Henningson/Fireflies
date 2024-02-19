@@ -140,7 +140,7 @@ def create_rays(sensor, points) -> torch.tensor:
 
     scale = mi.Vector2f(1.0 / film_size[0], 1.0 / film_size[1])
     pos = mi.Vector2f(mi.Float(pos % int(film_size[0])),
-                mi.Float(pos // int(film_size[1])))
+                mi.Float(pos // int(film_size[0])))
 
     #pos += sampler.next_2d()
 
@@ -199,6 +199,7 @@ def generate_epipolar_constraints(scene, params, device):
     proj_xwidth, proj_ywidth = projector_sensor.film().size()
     
     ray_origins, ray_directions = get_camera_frustum(projector_sensor, device)
+    camera_origins, camera_directions = get_camera_frustum(camera_sensor, device)
 
     near_clip = params['PerspectiveCamera_1.near_clip']
     far_clip = params['PerspectiveCamera_1.far_clip']
@@ -208,13 +209,17 @@ def generate_epipolar_constraints(scene, params, device):
     projection_points = ray_origins + far_clip * ray_directions
     epipolar_points   = projection_points
 
-    K = utils.build_projection_matrix(params['PerspectiveCamera.x_fov'], params['PerspectiveCamera.near_clip'], params['PerspectiveCamera.far_clip'])
+    #K = utils.build_projection_matrix(params['PerspectiveCamera.x_fov'], params['PerspectiveCamera.near_clip'], params['PerspectiveCamera.far_clip'])
+    K = mi.perspective_projection(camera_sensor.film().size(), camera_sensor.film().crop_size(), camera_sensor.film().crop_offset(), params['PerspectiveCamera.x_fov'], params['PerspectiveCamera.near_clip'], params['PerspectiveCamera.far_clip']).matrix.torch()[0]
     CAMERA_WORLD = params["PerspectiveCamera.to_world"].matrix.torch()[0]
     #CAMERA_WORLD[0:3, 0:3] = CAMERA_WORLD[0:3, 0:3] @ utils_math.getYTransform(np.pi, CAMERA_WORLD.device)
+
+    #mi.perspective_transformation(scene.sensors()[0].film.size())
 
     epipolar_points = transforms.transform_points(epipolar_points, CAMERA_WORLD.inverse())
     epipolar_points = transforms.transform_points(epipolar_points, K)[:, 0:2]
 
+    # Is in [0 -> 1]
     epi_points_np = epipolar_points.detach().cpu().numpy()
 
     hull = ConvexHull(epi_points_np)
@@ -232,7 +237,6 @@ def generate_epipolar_constraints(scene, params, device):
     #camera_size = camera_size[[1, 0]] # swap image size to Y,X
     
     epi_points_np = line_segments.cpu().numpy()
-    epi_points_np = (epi_points_np + 1.0) * 0.5
     #epi_points_np = epi_points_np[:, [1, 0]]
     epi_points_np *= camera_size
 
@@ -246,33 +250,37 @@ def generate_epipolar_constraints(scene, params, device):
 
 
 def initialize_laser(mitsuba_scene, mitsuba_params, firefly_scene, config, mode, device):
+    projector_sensor = mitsuba_scene.sensors()[1]
+
     near_clip = mitsuba_scene.sensors()[1].near_clip()
     far_clip = mitsuba_scene.sensors()[1].far_clip()
-    fov = float(mitsuba_params['PerspectiveCamera_1.x_fov'][0])
+    laser_fov = float(mitsuba_params['PerspectiveCamera_1.x_fov'][0])
+    near_clip = mitsuba_scene.sensors()[1].near_clip()
+
     radians = math.pi / 180.0
 
     image_size = torch.tensor(mitsuba_scene.sensors()[1].film().size(), device=device)
-    K = utils.build_projection_matrix(fov, 0.01, 10000.0, device=device)
+    LASER_K = mi.perspective_projection(projector_sensor.film().size(), projector_sensor.film().crop_size(), projector_sensor.film().crop_offset(), laser_fov, near_clip, far_clip).matrix.torch()[0]
     n_beams = config.n_beams
 
     local_laser_dir = None
     if mode == "RANDOM":
         local_laser_dir = laser.Laser.generate_random_rays(
             num_beams = n_beams,
-            intrinsic_matrix = K,
+            intrinsic_matrix = LASER_K,
             device=device
         )
-    elif mode == "BLUE_NOISE":
+    elif mode == "POISSON":
         local_laser_dir = laser.Laser.generate_blue_noise_rays(
             image_size_x = image_size[0],
             image_size_y = image_size[1],
             num_beams = n_beams,
-            intrinsic_matrix = K,
+            intrinsic_matrix = LASER_K,
             device = device)
     elif mode == "GRID":
         grid_width = int(math.sqrt(config.n_beams))
         local_laser_dir = laser.Laser.generate_uniform_rays(
-            fov * radians / grid_width,
+            laser_fov * radians / grid_width,
             num_beams_x = grid_width,
             num_beams_y = grid_width,
             device=device)
@@ -281,13 +289,14 @@ def initialize_laser(mitsuba_scene, mitsuba_params, firefly_scene, config, mode,
         constraint_map = generate_epipolar_constraints(mitsuba_scene, mitsuba_params, device)
 
         # Generate random depth maps by uniformly sampling from scene parameter ranges
+        #print(config.n_depthmaps)
         depth_maps = depth.random_depth_maps(firefly_scene, mitsuba_scene, num_maps=config.n_depthmaps)
 
         # Given depth maps, generate probability distribution
         variance_map = probability_distribution_from_depth_maps(depth_maps, config.variational_epsilon)
         variance_map = utils.normalize(variance_map)
         vm = (variance_map.cpu().numpy()*255).astype(np.uint8)
-        #vm = cv2.applyColorMap(vm, cv2.COLORMAP_VIRIDIS)
+        vm = cv2.applyColorMap(vm, cv2.COLORMAP_INFERNO)
         cv2.imshow("Variance Map", vm)
         cv2.waitKey(0)
 
@@ -301,8 +310,8 @@ def initialize_laser(mitsuba_scene, mitsuba_params, firefly_scene, config, mode,
 
         # sample points for laser rays
         
-        min_radius = config.sigma
-        max_radius = 5 * min_radius
+        min_radius = config.sigma / 2
+        max_radius = 7 * min_radius
         normalized_sampling = 1 - utils.normalize(final_sampling_map)
         normalized_sampling = min_radius + (max_radius - min_radius) * normalized_sampling
         n_points, points = bridson.poissonDiskSampling(normalized_sampling.detach().cpu().numpy(), 50)
@@ -322,12 +331,6 @@ def initialize_laser(mitsuba_scene, mitsuba_params, firefly_scene, config, mode,
             cm = cm*255
             cv2.imwrite("constraint_map.png", cm)
 
-        # Build laser from Projector constraints
-        #tex_size = torch.tensor(mitsuba_scene.sensors()[1].film().size(), device=device)
-        near_clip = mitsuba_scene.sensors()[1].near_clip()
-        far_clip = mitsuba_scene.sensors()[1].far_clip()
-        fov = mitsuba_params['PerspectiveCamera_1.x_fov']
-
         laser_world = firefly_scene.projector.world()
         laser_origin = laser_world[0:3, 3]
         # Sample directions of laser beams from variance map
@@ -346,4 +349,4 @@ def initialize_laser(mitsuba_scene, mitsuba_params, firefly_scene, config, mode,
     # I really gotta fix those coordinate systems...
     local_laser_dir[:, 1] *= -1.0
 
-    return laser.Laser(firefly_scene.projector, local_laser_dir, fov, near_clip, far_clip)
+    return laser.Laser(firefly_scene.projector, local_laser_dir, LASER_K, laser_fov, near_clip, far_clip)
