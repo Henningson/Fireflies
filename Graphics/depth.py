@@ -1,5 +1,6 @@
 import torch
 import mitsuba as mi
+
 mi.set_variant("cuda_ad_rgb")
 import drjit as dr
 import Graphics.LaserEstimation as LaserEstimation
@@ -10,12 +11,12 @@ import Utils.utils as utils
 from tqdm import tqdm
 
 
-@dr.wrap_ad(source='torch', target='drjit')
+@dr.wrap_ad(source="torch", target="drjit")
 def from_laser(scene, params, laser):
     sensor = scene.sensors()[0]
     film = sensor.film()
     # TODO: Add device
-    size = torch.tensor(film.size(), device='cuda')
+    size = torch.tensor(film.size(), device="cuda")
 
     hit_points = LaserEstimation.cast_laser(scene, laser=laser)
     ndc_coords = LaserEstimation.project_to_camera_space(params, hit_points)
@@ -32,16 +33,20 @@ def from_laser(scene, params, laser):
     return depth_map * mask
 
 
-
-@dr.wrap_ad(source='torch', target='drjit')
+@dr.wrap_ad(source="torch", target="drjit")
 def cast_laser_id(scene, origin, direction):
-    origin_point = mi.Point3f(origin[:, 0].array, origin[:, 1].array, origin[:, 2].array)
-    rays_vector = mi.Vector3f(direction[:, 0].array, direction[:, 1].array, direction[:, 2].array)
+    origin_point = mi.Point3f(
+        origin[:, 0].array, origin[:, 1].array, origin[:, 2].array
+    )
+    rays_vector = mi.Vector3f(
+        direction[:, 0].array, direction[:, 1].array, direction[:, 2].array
+    )
     surface_interaction = scene.ray_intersect(mi.Ray3f(origin_point, rays_vector))
-    shape_pointer = mi.Int(dr.reinterpret_array_v(mi.UInt, surface_interaction.shape)).torch()
+    shape_pointer = mi.Int(
+        dr.reinterpret_array_v(mi.UInt, surface_interaction.shape)
+    ).torch()
     shape_pointer -= shape_pointer.min()
     return shape_pointer
-
 
 
 def from_camera_non_wrapped(scene, spp=64):
@@ -60,17 +65,15 @@ def from_camera_non_wrapped(scene, spp=64):
 
     pos //= spp
     scale = mi.Vector2f(1.0 / film_size[0], 1.0 / film_size[1])
-    pos = mi.Vector2f(mi.Float(pos  % int(film_size[0])),
-                mi.Float(pos // int(film_size[0])))
+    pos = mi.Vector2f(
+        mi.Float(pos % int(film_size[0])), mi.Float(pos // int(film_size[0]))
+    )
 
     pos += sampler.next_2d()
 
     # Sample rays starting from the camera sensor
     rays, weights = sensor.sample_ray(
-        time=0,
-        sample1=sampler.next_1d(),
-        sample2=pos * scale,
-        sample3=0
+        time=0, sample1=sampler.next_1d(), sample2=pos * scale, sample3=0
     )
 
     # Intersect rays with the scene geometry
@@ -102,17 +105,15 @@ def get_segmentation_from_camera(scene, spp=1):
 
     pos //= spp
     scale = mi.Vector2f(1.0 / film_size[0], 1.0 / film_size[1])
-    pos = mi.Vector2f(mi.Float(pos  % int(film_size[0])),
-                mi.Float(pos // int(film_size[0])))
+    pos = mi.Vector2f(
+        mi.Float(pos % int(film_size[0])), mi.Float(pos // int(film_size[0]))
+    )
 
     pos += sampler.next_2d()
 
     # Sample rays starting from the camera sensor
     rays, weights = sensor.sample_ray(
-        time=0,
-        sample1=sampler.next_1d(),
-        sample2=pos * scale,
-        sample3=0
+        time=0, sample1=sampler.next_1d(), sample2=pos * scale, sample3=0
     )
 
     # Intersect rays with the scene geometry
@@ -120,13 +121,15 @@ def get_segmentation_from_camera(scene, spp=1):
 
     # Watch out, hacky stuff going on!
     # Solution from: https://github.com/mitsuba-renderer/mitsuba3/discussions/882
-    shape_pointer = mi.Int(dr.reinterpret_array_v(mi.UInt, surface_interaction.shape)).torch()
+    shape_pointer = mi.Int(
+        dr.reinterpret_array_v(mi.UInt, surface_interaction.shape)
+    ).torch()
     shape_pointer -= shape_pointer.min()
 
     return shape_pointer.reshape(film_size[1], film_size[0])
 
 
-@dr.wrap_ad(source='drjit', target='torch')
+@dr.wrap_ad(source="drjit", target="torch")
 def from_camera(scene, spp=64):
     sensor = scene.sensors()[0]
     film = sensor.film()
@@ -143,17 +146,15 @@ def from_camera(scene, spp=64):
 
     pos //= spp
     scale = mi.Vector2f(1.0 / film_size[0], 1.0 / film_size[1])
-    pos = mi.Vector2f(mi.Float(pos  % int(film_size[0])),
-                mi.Float(pos // int(film_size[0])))
+    pos = mi.Vector2f(
+        mi.Float(pos % int(film_size[0])), mi.Float(pos // int(film_size[0]))
+    )
 
     pos += sampler.next_2d()
 
     # Sample rays starting from the camera sensor
     rays, weights = sensor.sample_ray(
-        time=0,
-        sample1=sampler.next_1d(),
-        sample2=pos * scale,
-        sample3=0
+        time=0, sample1=sampler.next_1d(), sample2=pos * scale, sample3=0
     )
 
     # Intersect rays with the scene geometry
@@ -169,10 +170,11 @@ def from_camera(scene, spp=64):
     return result
 
 
-def random_depth_maps(firefly_scene, mi_scene, num_maps: int = 100, spp: int = 1) -> torch.tensor:
+def random_depth_maps(
+    firefly_scene, mi_scene, num_maps: int = 100, spp: int = 1
+) -> torch.tensor:
     stacked_depth_maps = []
     im_size = mi_scene.sensors()[0].film().size()
-
 
     for i in tqdm(range(num_maps)):
         firefly_scene.randomize()
@@ -185,7 +187,6 @@ def random_depth_maps(firefly_scene, mi_scene, num_maps: int = 100, spp: int = 1
         colored = cv2.applyColorMap(vis_depth, cv2.COLORMAP_INFERNO)
         cv2.imshow("Depth", colored)
         cv2.waitKey(1)
-
 
         depth_map = depth_map.torch().reshape(im_size[1], im_size[0], spp).mean(dim=-1)
         stacked_depth_maps.append(depth_map)

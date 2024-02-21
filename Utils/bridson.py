@@ -10,10 +10,10 @@ Published under MIT license.
 
 
 def getGridCoordinates(coords):
-    return np.floor(coords).astype('int')
+    return np.floor(coords).astype("int")
 
 
-def poissonDiskSampling(radius, k=30, radiusType='default'):
+def poissonDiskSampling(radius, k=30, radiusType="default"):
     """
     Implementation of the Poisson Disk Sampling algorithm.
 
@@ -38,8 +38,12 @@ def poissonDiskSampling(radius, k=30, radiusType='default'):
     grid[idx[0], idx[1]] = nParticle
 
     # Initialise active queue
-    queue = [coords]  # Appending to list is much quicker than to numpy array, if you do it very often
-    particleCoordinates = [coords] # List containing the exact positions of the final particles
+    queue = [
+        coords
+    ]  # Appending to list is much quicker than to numpy array, if you do it very often
+    particleCoordinates = [
+        coords
+    ]  # List containing the exact positions of the final particles
 
     # Continue iteration while there is still points in active list
     while queue:
@@ -52,12 +56,16 @@ def poissonDiskSampling(radius, k=30, radiusType='default'):
         success = False
         for _ in range(k):
 
-            if radiusType == 'default':
+            if radiusType == "default":
                 # Pick radius for new sample particle ranging between 1 and 2 times the local radius
-                newRadius = radius[activeGridCoords[0], activeGridCoords[1]] * (np.random.random() + 1)
-            elif radiusType == 'normDist':
+                newRadius = radius[activeGridCoords[0], activeGridCoords[1]] * (
+                    np.random.random() + 1
+                )
+            elif radiusType == "normDist":
                 # Pick radius for new sample particle from a normal distribution around 1.5 times the local radius
-                newRadius = radius[activeGridCoords[0], activeGridCoords[1]] * np.random.normal(1.5, 0.2)
+                newRadius = radius[
+                    activeGridCoords[0], activeGridCoords[1]
+                ] * np.random.normal(1.5, 0.2)
 
             # Pick the angle to the sample particle and determine its coordinates
             angle = 2 * np.pi * np.random.random()
@@ -73,12 +81,18 @@ def poissonDiskSampling(radius, k=30, radiusType='default'):
             newGridCoords = getGridCoordinates((newCoords[1], newCoords[0]))
 
             radiusThere = np.ceil(radius[newGridCoords[1], newGridCoords[0]])
-            gridRangeX = (np.max([newGridCoords[0] - radiusThere, 0]).astype('int'),
-                          np.min([newGridCoords[0] + radiusThere + 1, gridWidth]).astype('int'))
-            gridRangeY = (np.max([newGridCoords[1] - radiusThere, 0]).astype('int'),
-                          np.min([newGridCoords[1] + radiusThere + 1, gridHeight]).astype('int'))
+            gridRangeX = (
+                np.max([newGridCoords[0] - radiusThere, 0]).astype("int"),
+                np.min([newGridCoords[0] + radiusThere + 1, gridWidth]).astype("int"),
+            )
+            gridRangeY = (
+                np.max([newGridCoords[1] - radiusThere, 0]).astype("int"),
+                np.min([newGridCoords[1] + radiusThere + 1, gridHeight]).astype("int"),
+            )
 
-            searchGrid = grid[slice(gridRangeY[0], gridRangeY[1]), slice(gridRangeX[0], gridRangeX[1])]
+            searchGrid = grid[
+                slice(gridRangeY[0], gridRangeY[1]), slice(gridRangeX[0], gridRangeX[1])
+            ]
             conflicts = np.where(searchGrid > 0)
 
             if len(conflicts[0]) == 0 and len(conflicts[1]) == 0:
@@ -98,33 +112,31 @@ def poissonDiskSampling(radius, k=30, radiusType='default'):
             # Remove current particle from the active queue!
             del queue[idx]
 
-    return(nParticle, np.array(particleCoordinates))
-
+    return (nParticle, np.array(particleCoordinates))
 
 
 if __name__ == "__main__":
 
     width = 512
     height = 512
-    
+
     radius = 10
-    max_radius = 3*radius
+    max_radius = 3 * radius
 
     import cv2
 
-    weight_matrix = np.ones([height, width], np.float32) * max_radius # Should be between 0 and 1
+    weight_matrix = (
+        np.ones([height, width], np.float32) * max_radius
+    )  # Should be between 0 and 1
     cv2.circle(weight_matrix, np.array(weight_matrix.shape) // 2, 50, radius, -1)
 
-    #cv2.imshow("Weight Matrix", weight_matrix)
-    #cv2.waitKey(0)
-
-
+    # cv2.imshow("Weight Matrix", weight_matrix)
+    # cv2.waitKey(0)
 
     npoints, points = poissonDiskSampling(weight_matrix)
-    #points = np.array(poisson_disc_samples(width=width, height=height, r=radius))
+    # points = np.array(poisson_disc_samples(width=width, height=height, r=radius))
 
     plt.scatter(points[:, 0], points[:, 1])
     plt.xlim(0, width)
     plt.ylim(0, height)
     plt.show()
-    

@@ -8,7 +8,6 @@ from geomdl import NURBS
 from geomdl.visualization import VisMPL
 
 
-
 def read_config_yaml(file_path: str) -> dict:
     return yaml.safe_load(Path(file_path).read_text())
 
@@ -18,7 +17,7 @@ def singleRandomBetweenTensors(a: torch.tensor, b: torch.tensor) -> torch.tensor
     assert a.device == b.device
 
     rands = random.uniform(0, 1)
-    return rands * (b - a ) + b
+    return rands * (b - a) + b
 
 
 def randomBetweenTensors(a: torch.tensor, b: torch.tensor) -> torch.tensor:
@@ -35,7 +34,11 @@ def normalize(tensor: torch.tensor) -> torch.tensor:
     return tensor
 
 
-def normalize_channelwise(tensor: torch.tensor, dim: int = -1, device: torch.cuda.device = torch.device("cuda")) -> torch.tensor:
+def normalize_channelwise(
+    tensor: torch.tensor,
+    dim: int = -1,
+    device: torch.cuda.device = torch.device("cuda"),
+) -> torch.tensor:
     indices = torch.arange(0, len(tensor.shape), device=device)
     mask = torch.ones(indices.shape, dtype=torch.bool, device=device)
     mask[dim] = False
@@ -51,9 +54,13 @@ def retain_grads(non_leaf_tensor: List[torch.tensor]) -> None:
         tensor.retain_grad()
 
 
-
 # From: https://pytorch3d.readthedocs.io/en/latest/_modules/pytorch3d/renderer/cameras.html#FoVPerspectiveCameras.compute_projection_matrix
-def build_projection_matrix(fov: float, near_clip: float, far_clip: float, device: torch.cuda.device = torch.device("cuda")) -> torch.tensor:
+def build_projection_matrix(
+    fov: float,
+    near_clip: float,
+    far_clip: float,
+    device: torch.cuda.device = torch.device("cuda"),
+) -> torch.tensor:
     """
     Compute the calibration matrix K of shape (N, 4, 4)
 
@@ -105,39 +112,37 @@ def build_projection_matrix(fov: float, near_clip: float, far_clip: float, devic
     return K
 
 
-
-#def tensorToFloatImage(tensor: torch.tensor) -> np.array:
-#    return 
+# def tensorToFloatImage(tensor: torch.tensor) -> np.array:
+#    return
 
 
 def importBlenderNurbsObj(path):
-    obj_file = open(path, 'r')
+    obj_file = open(path, "r")
     lines = obj_file.readlines()
 
     control_points = []
     deg = None
     knotvector = None
 
-
     for line in lines:
-        token = 'v '
-        if line.startswith('v '):
-            line = line.replace(token, '')
-            values = line.split(' ')
+        token = "v "
+        if line.startswith("v "):
+            line = line.replace(token, "")
+            values = line.split(" ")
             values = [float(value) for value in values]
             control_points.append(values)
             continue
 
-        token = 'deg '
+        token = "deg "
         if line.startswith(token):
-            line = line.replace(token, '')
+            line = line.replace(token, "")
             deg = int(line)
             continue
 
-        token = 'parm u '
+        token = "parm u "
         if line.startswith(token):
-            line = line.replace(token, '')
-            values = line.split(' ')
+            line = line.replace(token, "")
+            values = line.split(" ")
             knotvector = [float(value) for value in values]
             continue
 

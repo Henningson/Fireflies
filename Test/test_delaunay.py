@@ -23,7 +23,6 @@ def main():
 
     optim = torch.optim.Adam([start_pc])
 
-
     for _ in range(10000):
         optim.zero_grad()
 
@@ -32,7 +31,7 @@ def main():
             # Project pointcloud to camera
             transformed_pc = transforms.transform_points(start_pc, K)[:, 0:2]
             pos = transformed_pc.cpu().numpy()
-            tri = scipy.spatial.Delaunay(pos, qhull_options='QJ')
+            tri = scipy.spatial.Delaunay(pos, qhull_options="QJ")
             face = torch.from_numpy(tri.simplices)
             face = face.contiguous().to(DEVICE, torch.long)
 
@@ -43,7 +42,6 @@ def main():
         loss = pytorch3d.loss.chamfer_distance(new_pc, random_pc.unsqueeze(0))[0]
         print(loss)
         loss.backward()
-
 
 
 if __name__ == "__main__":

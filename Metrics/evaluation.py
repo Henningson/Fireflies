@@ -20,23 +20,20 @@ class ImageCriterion(EvaluationCriterion):
     def __init__(self, eval_func):
         super(ImageCriterion, self).__init__(eval_func)
 
+
 class Pointcloud2dCriterion(EvaluationCriterion):
     def __init__(self, eval_func):
         super(ImageCriterion, self).__init__(eval_func)
+
 
 class Pointcloud3dCriterion(EvaluationCriterion):
     def __init__(self, eval_func):
         super(ImageCriterion, self).__init__(eval_func)
 
+
 class MeshCriterion(EvaluationCriterion):
     def __init__(self, eval_func):
         super(MeshCriterion, self).__init__(eval_func)
-
-
-
-
-
-
 
 
 class Evaluator:
@@ -65,4 +62,3 @@ class Evaluator:
                 # Do something
             elif criterium.type() == EvaluationCriterion.IMAGE:
                 pass
-            
