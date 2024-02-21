@@ -38,6 +38,8 @@ from tqdm import tqdm
 import pytorch3d.ops
 import imageio
 import matplotlib.pyplot as plt
+import time
+import shutil
 
 global_scene = None
 global_params = None
@@ -86,9 +88,7 @@ def vis_schmexy_depth(ndc_points, depth_image):
     cv2.waitKey(0)
 
 
-def main(last_iter, last_rays):
-    restart = False
-
+def main():
     global global_scene
     global global_params
     global global_key
@@ -102,6 +102,16 @@ def main(last_iter, last_rays):
     sigma = torch.tensor([config.sigma], device=DEVICE)
     global_scene = mi.load_file(os.path.join(args.scene_path, "scene.xml"))
     global_params = mi.traverse(global_scene)
+
+    save_path = os.path.join(args.scene_path, f'{time.strftime("%Y-%m-%d-%H:%M:%S")}_{config.pattern_initialization}_{config.iterations}')
+
+    try:
+        os.mkdir(save_path)
+    except:
+        printer.Printer.Warning(f'Folder {save_path} does already exist. Please restart.')
+        exit()
+    shutil.copy(os.path.join(args.scene_path, "config.yml"), os.path.join(save_path, "config.yml"))
+
 
     if hasattr(config, 'downscale_factor'):
         global_params['PerspectiveCamera.film.size'] = global_params['PerspectiveCamera.film.size'] // config.downscale_factor
@@ -124,19 +134,11 @@ def main(last_iter, last_rays):
     camera_near_clip = global_params['PerspectiveCamera.near_clip']
     camera_far_clip = global_params['PerspectiveCamera.far_clip']
 
-
-    projector_sensor = global_scene.sensors()[1]
-    projector_x_fov = global_params['PerspectiveCamera_1.x_fov']
-    projector_near_clip = global_params['PerspectiveCamera_1.near_clip']
-    projector_far_clip = global_params['PerspectiveCamera_1.far_clip']
-
     
     K_CAMERA = mi.perspective_projection(camera_sensor.film().size(), camera_sensor.film().crop_size(), camera_sensor.film().crop_offset(), camera_x_fov, camera_near_clip, camera_far_clip).matrix.torch()[0]
     #K_PROJECTOR = mi.perspective_projection(projector_sensor.film().size(), projector_sensor.film().crop_size(), projector_sensor.film().crop_offset(), projector_x_fov, projector_near_clip, projector_far_clip).matrix.torch()[0]
     
     Laser = LaserEstimation.initialize_laser(global_scene, global_params, firefly_scene, config, config.pattern_initialization, DEVICE)
-    if last_rays is not None:
-        Laser._rays = last_rays.to(DEVICE)
 
     KNN_FEATURES = config.knn_features
 
@@ -144,14 +146,10 @@ def main(last_iter, last_rays):
     MODEL_CONFIG = {
         'in_channels': KNN_FEATURES,
         'features': [32, 64, 128, 256]}
-    model = RotationEncoder.PeakFinder(config=MODEL_CONFIG, device=DEVICE).to(DEVICE)
+    model = RotationEncoder.PeakFinder(config=MODEL_CONFIG).to(DEVICE)
     model.train()
     
-    loss_funcs = Losses.Handler([
-            #[Losses.VGGPerceptual().to(DEVICE), 0.0],
-            [torch.nn.MSELoss().to(DEVICE), 1.0],
-            #[torch.nn.L1Loss().to(DEVICE),  1.0]
-            ])
+    loss_funcs = Losses.Handler([[torch.nn.MSELoss().to(DEVICE), 1.0]])
     loss_values = []
     
     Laser._rays.requires_grad = True
@@ -166,25 +164,16 @@ def main(last_iter, last_rays):
     #scheduler = torch.optim.lr_scheduler.PolynomialLR(optim, total_iters = config.iterations, power=0.99)
     sensor_size = torch.tensor(global_scene.sensors()[0].film().size(), device=DEVICE)
     tex_size = torch.tensor(global_scene.sensors()[1].film().size(), device=DEVICE)
-    
-    target_mesh = None
-    for key, mesh in firefly_scene.meshes.items():
-        if mesh.name() == "Grid":
-            target_mesh = mesh
-            break
-    #with torch.autograd.detect_anomaly():
 
     zero_gradient_counter = torch.zeros(Laser._rays.shape[0], dtype=torch.int32, device=DEVICE)
     zero_grad_threshold = config.zero_grad_threshold
     ray_mask = torch.ones(Laser._rays.shape[0], dtype=torch.int32, device=DEVICE)
 
-    for i in (progress_bar := tqdm(range(last_iter, config.iterations))):
+    for i in (progress_bar := tqdm(range(config.iterations))):
         if i == config.warmup_iterations:
             optim.param_groups[1]['lr'] = config.lr_laser
 
-        start_time = time.time()
         firefly_scene.randomize()
-        #target_rotation = torch.tensor(target_mesh.zRot, device=DEVICE)
 
         # Generate depth image and look for peak of our Gaussian Blob
         depth_image = depth.from_camera(global_scene, spp=1).torch().reshape(sensor_size[0], sensor_size[1])
@@ -199,18 +188,12 @@ def main(last_iter, last_rays):
         texture_init = rasterization.rasterize_points(points, sigma, tex_size)
         texture_init = rasterization.softor(texture_init)
 
-        cv2.imshow("Tex", texture_init.detach().cpu().numpy())
-
         hitpoints = cast_laser(Laser.originPerRay(), Laser.rays())
 
         world_points = Laser.originPerRay() + hitpoints * Laser.rays()
-        #world_points = world_points[(hitpoints != 0).squeeze(), :]
-
         world_points = world_points[ray_mask.nonzero().flatten()]
-
         CAMERA_WORLD = global_params["PerspectiveCamera.to_world"].matrix.torch()[0]
         
-
         world_points_hat = transforms.transform_points(world_points, CAMERA_WORLD.inverse()).squeeze()
         ndc_points = transforms.transform_points(world_points_hat, K_CAMERA).squeeze()
         sensor_size = torch.tensor(global_scene.sensors()[0].film().size(), device=DEVICE)
@@ -250,6 +233,7 @@ def main(last_iter, last_rays):
         # Lets go for segmentation to projection similarity here
         loss += torch.nn.MSELoss()(rasterization.softor(rasterized_points), segmentation) * config.perspective_segmentation_similarity_lambda
         '''
+
         loss_values.append(loss.item())
         loss.backward()
 
@@ -265,52 +249,51 @@ def main(last_iter, last_rays):
 
 
             optim.step()
-            #scheduler.step()
             optim.zero_grad()
 
             progress_bar.set_description("Loss: {0:.4f}, Sigma: {1:.4f}".format(loss.item(), sigma.detach().cpu().numpy()[0]))
-            with torch.no_grad():
+            
+            if config.visualize:
+                with torch.no_grad():
+                    render_im = render(texture_init.unsqueeze(-1))
+                    render_im = torch.clamp(render_im, 0, 1)[:, :, [2, 1, 0]].cpu().numpy()
+                    render_circle = cv2.circle(render_im.clone(), pred_peak.detach().cpu().numpy().flatten().astype(np.uint8), 3, (0, 255, 0), -1)
+                    render_circle = cv2.circle(render_circle, mean_coordinate.detach().cpu().numpy().flatten().astype(np.uint8), 3, (0, 0, 255), -1)
+                    render_circle = cv2.circle(render_circle, point_coordinates[idx.flatten()][0].detach().cpu().numpy().flatten().astype(np.uint8), 3, (255, 255, 0), -1)
+                    render_circle = cv2.circle(render_circle, point_coordinates[idx.flatten()][1].detach().cpu().numpy().flatten().astype(np.uint8), 3, (255, 255, 0), -1)
 
-                render_im = render(texture_init.unsqueeze(-1))
-                render_im = torch.clamp(render_im, 0, 1)[:, :, [2, 1, 0]].cpu().numpy()
-                render_circle = cv2.circle(render_im, pred_peak.detach().cpu().numpy().flatten().astype(np.uint8), 3, (0, 255, 0), -1)
-                render_circle = cv2.circle(render_circle, mean_coordinate.detach().cpu().numpy().flatten().astype(np.uint8), 3, (0, 0, 255), -1)
-                render_circle = cv2.circle(render_circle, point_coordinates[idx.flatten()][0].detach().cpu().numpy().flatten().astype(np.uint8), 3, (255, 255, 0), -1)
-                render_circle = cv2.circle(render_circle, point_coordinates[idx.flatten()][1].detach().cpu().numpy().flatten().astype(np.uint8), 3, (255, 255, 0), -1)
+                    cv2.imshow("Render", render_circle)
+                    #cv2.waitKey(1)
+                    
+                    Laser.clamp_to_fov(clamp_val=0.99)
+                    Laser.normalize_rays()
+                    sparse_depth = torch.clamp(per_point_depth, 0, 1)
+                    sparse_depth = sparse_depth.detach().cpu().numpy() * 255
+                    sparse_depth = sparse_depth.astype(np.uint8)
+                    print(point_coordinates[idx.flatten()])
+                    cv2.imshow("Points", sparse_depth)
+                    cv2.waitKey(1)
 
-                cv2.imshow("Render", render_circle)
-                #cv2.waitKey(1)
-                cv2.imwrite("RotBlobOptimization/{:05d}.png".format(i//config.gradient_accumulation_steps), (render_im*255).astype(np.uint8))
-                Laser.clamp_to_fov(clamp_val=0.99)
-                Laser.normalize_rays()
-                sparse_depth = torch.clamp(per_point_depth, 0, 1)
-                sparse_depth = sparse_depth.detach().cpu().numpy() * 255
-                sparse_depth = sparse_depth.astype(np.uint8)
-                print(point_coordinates[idx.flatten()])
-                cv2.imshow("Points", sparse_depth)
-                cv2.waitKey(1)
+                    if config.save_images:
+                        optim_path = os.path.join(save_path, optim_path)
+                        os.mkdir(optim_path)
+                        image_string = "{:05d}.png".format(i//config.gradient_accumulation_steps)
+                        cv2.imwrite(os.path.join(optim_path, image_string), (render_im*255).astype(np.uint8))
 
-        if time.time() - start_time > 0.5:
-            restart = False
-            print("Restarting.")
-            #break
 
+
+    printer.Printer.OKG("Optimization done. Saving.")
+    checkpoint = {"optimizer": optim.state_dict()}
+    checkpoint.update(model.get_statedict())
+
+    torch.save(checkpoint, os.path.join(save_path, "model.pth.tar"))
+    Laser.save(os.path.join(save_path, "laser.yml"))
+    
+    print("Finished everything.")
 
     plt.plot(loss_values)
     plt.show()
 
 
-    printer.Printer.OKG("Optimization done. Initiating post-processing.")
-    
-    Laser.save(os.path.join(args.scene_path, "laser.yml"))
-    print("Finished everything.")
-
-    return restart, i, Laser._rays
-
-
 if __name__ == "__main__":
-    restart = True
-    iteration = 0
-    rays = None
-    while restart:
-        restart, iteration, rays = main(iteration, rays)
+    main()

@@ -135,42 +135,35 @@ class Model(nn.Module):
         x = self.image_to_rot(x.squeeze(dim=[-1, -2]))
         return x
 
+
 class PeakFinder(nn.Module):
-    def __init__(self, config, state_dict=None, pretrain=False, device="cuda"):
+    def __init__(self, config, state_dict=None):
         super(PeakFinder, self).__init__()
         input_features = config['in_channels']
-            
         features = config['features']
-
         self.bottleneck_size = features[-1]*2
+        self.layers = nn.ModuleList()
 
-
-        self.linear1 = nn.Linear(input_features*3, 32)
-        self.relu = nn.ReLU()
-        self.linear2 = nn.Linear(32, 16)
-        self.linear3 = nn.Linear(16, 8)
-        self.linear4 = nn.Linear(8, 2)
+        self.layers.append(nn.Linear(input_features*3, 32))
+        self.layers.append(nn.ReLU())
+        self.layers.append(nn.Linear(32, 16))
+        self.layers.append(nn.ReLU())
+        self.layers.append(nn.Linear(16, 8))
+        self.layers.append(nn.ReLU())
+        self.layers.append(nn.Linear(8, 2))
 
         if state_dict:
             self.load_from_dict(state_dict)
 
-        if pretrain:
-            self.encoder.requires_grad_ = False
-
     def get_statedict(self):
-        return {"Encoder": self.encoder.state_dict()}
+        return {"Layer": self.layers.state_dict()}
 
     def load_from_dict(self, dict):
-        self.encoder.load_state_dict(dict["Encoder"])
+        self.layers.load_state_dict(dict["Layer"])
 
     def forward(self, x):
-        x = self.linear1(x)
-        x = self.relu(x)
-        x = self.linear2(x)
-        x = self.relu(x)
-        x = self.linear3(x)
-        x = self.relu(x)
-        x = self.linear4(x)
+        for layer in self.layers:
+            x = layer(x)
 
         return x
     

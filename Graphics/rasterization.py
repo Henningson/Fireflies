@@ -189,6 +189,56 @@ def baked_sum(points: torch.tensor, sigma: torch.tensor, texture_size: torch.ten
 
     return tex.T
 
+def baked_sum_2(points: torch.tensor, sigma: torch.tensor, texture_size: torch.tensor, num_std: int = 4, device: torch.cuda.device = torch.device("cuda")) -> torch.tensor:
+    tex = torch.zeros(texture_size.tolist(), dtype=torch.float32, device=device)
+    # Somewhere between [0, texture_size] but in float
+    points = points.clone() * texture_size
+
+    # We use 3*sigma^2 here, to include most of the gaussian
+    footprint = math.floor(sigma.sqrt().item()) * num_std
+    footprint = footprint + 1 if footprint % 2 == 0 else footprint
+    half_footprint = int((footprint - 1) / 2)
+
+    point_in_middle_of_footprint = points - points.floor() + half_footprint
+
+    footprint_origin_in_original_image = (points - half_footprint).floor() # [Y, X]
+
+    y, x = torch.meshgrid(torch.arange(0, footprint, device=device), torch.arange(0, footprint, device=device), indexing='ij')
+    
+    y = y.unsqueeze(0).repeat((points.shape[0], 1, 1))
+    x = x.unsqueeze(0).repeat((points.shape[0], 1, 1))    
+    
+    y_dist = y - point_in_middle_of_footprint[:, 0:1].unsqueeze(-1)
+    x_dist = x - point_in_middle_of_footprint[:, 1:2].unsqueeze(-1)
+
+    dist = y_dist*y_dist + x_dist*x_dist
+    dist = torch.exp(-torch.pow(dist / sigma, 2))
+        
+    wo = footprint_origin_in_original_image.int()
+    rect_start = torch.zeros(points.shape[0], 2, dtype=torch.int32, device=device)
+    rect_end = torch.zeros(points.shape[0], 2, dtype=torch.int32, device=device) + footprint
+
+    if (wo[:, 0] < 0).any():
+        rect_start[:, 0] = torch.where(wo[:, 0] < 0, wo.abs()[:, 0], rect_start[:, 0])
+        wo[:, 0] = torch.where(wo[:, 0] < 0, 0, wo[:, 0])
+
+    if (wo[:, 1] < 0).any():
+        rect_start[:, 1] = torch.where(wo[:, 1] < 1, wo.abs()[:, 1], rect_start[:, 1])
+        wo[:, 1] = torch.where(wo[:, 1] < 0, 0, wo[:, 1])
+
+    if (wo[:, 0] + footprint >= texture_size[0]).any():
+        rect_end[:, 0] = torch.where(wo[:, 0] + footprint >= texture_size[0], texture_size[0] - wo[:, 0], rect_end[:, 0])
+    
+    if (wo[:, 1] + footprint >= texture_size[1]).any():
+        rect_end[:, 1] = torch.where(wo[:, 1] + footprint >= texture_size[1], texture_size[1] - wo[:, 1], rect_end[:, 1])
+
+    re = rect_end.clone()
+    rs = rect_start.clone()
+
+    for i in range(points.shape[0]):
+        tex[wo[i, 0]:wo[i, 0]+re[i, 0]-rs[i, 0], wo[i, 1]:wo[i, 1]+re[i, 1]-rs[i, 1]] = tex[wo[i, 0]:wo[i, 0]+re[i, 0]-rs[i, 0], wo[i, 1]:wo[i, 1]+re[i, 1]-rs[i, 1]].clone() + dist[i, rs[i, 0]:re[i, 0], rs[i, 1]:re[i, 1]]
+
+    return tex
 
 def baked_softor(points: torch.tensor, sigma: torch.tensor, texture_size: torch.tensor, num_std: int = 5, device: torch.cuda.device = torch.device("cuda")) -> torch.tensor:
     tex = torch.ones(texture_size.tolist(), dtype=torch.float32, device=device)
@@ -247,6 +297,58 @@ def baked_softor(points: torch.tensor, sigma: torch.tensor, texture_size: torch.
         re = rect_end.int()
 
         tex[wo[0]:wo[0]+re[0]-rs[0], wo[1]:wo[1]+re[1]-rs[1]] = tex[wo[0]:wo[0]+re[0]-rs[0], wo[1]:wo[1]+re[1]-rs[1]].clone() * (1-dist[rs[0]:re[0], rs[1]:re[1]])
+
+    return (1 - tex).T
+
+
+def baked_softor_2(points: torch.tensor, sigma: torch.tensor, texture_size: torch.tensor, num_std: int = 5, device: torch.cuda.device = torch.device("cuda")) -> torch.tensor:
+    tex = torch.ones(texture_size.tolist(), dtype=torch.float32, device=device)
+    # Somewhere between [0, texture_size] but in float
+    points = points.clone() * texture_size
+
+    # We use 3*sigma^2 here, to include most of the gaussian
+    footprint = math.floor(sigma.sqrt().item()) * num_std
+    footprint = footprint + 1 if footprint % 2 == 0 else footprint
+    half_footprint = int((footprint - 1) / 2)
+
+    point_in_middle_of_footprint = points - points.floor() + half_footprint
+
+    footprint_origin_in_original_image = (points - half_footprint).floor() # [Y, X]
+
+    y, x = torch.meshgrid(torch.arange(0, footprint, device=device), torch.arange(0, footprint, device=device), indexing='ij')
+    
+    y = y.unsqueeze(0).repeat((points.shape[0], 1, 1))
+    x = x.unsqueeze(0).repeat((points.shape[0], 1, 1))    
+    
+    y_dist = y - point_in_middle_of_footprint[:, 0:1].unsqueeze(-1)
+    x_dist = x - point_in_middle_of_footprint[:, 1:2].unsqueeze(-1)
+
+    dist = y_dist*y_dist + x_dist*x_dist
+    dist = torch.exp(-torch.pow(dist / sigma, 2))
+        
+    wo = footprint_origin_in_original_image.int()
+    rect_start = torch.zeros(points.shape[0], 2, dtype=torch.int32, device=device)
+    rect_end = torch.zeros(points.shape[0], 2, dtype=torch.int32, device=device) + footprint
+
+    if (wo[:, 0] < 0).any():
+        rect_start[:, 0] = torch.where(wo[:, 0] < 0, wo.abs()[:, 0], rect_start[:, 0])
+        wo[:, 0] = torch.where(wo[:, 0] < 0, 0, wo[:, 0])
+
+    if (wo[:, 1] < 0).any():
+        rect_start[:, 1] = torch.where(wo[:, 1] < 1, wo.abs()[:, 1], rect_start[:, 1])
+        wo[:, 1] = torch.where(wo[:, 1] < 0, 0, wo[:, 1])
+
+    if (wo[:, 0] + footprint >= texture_size[0]).any():
+        rect_end[:, 0] = torch.where(wo[:, 0] + footprint >= texture_size[0], texture_size[0] - wo[:, 0], rect_end[:, 0])
+    
+    if (wo[:, 1] + footprint >= texture_size[1]).any():
+        rect_end[:, 1] = torch.where(wo[:, 1] + footprint >= texture_size[1], texture_size[1] - wo[:, 1], rect_end[:, 1])
+
+    re = rect_end.clone()
+    rs = rect_start.clone()
+
+    for i in range(points.shape[0]):
+        tex[wo[i, 0]:wo[i, 0]+re[i, 0]-rs[i, 0], wo[i, 1]:wo[i, 1]+re[i, 1]-rs[i, 1]] = tex[wo[i, 0]:wo[i, 0]+re[i, 0]-rs[i, 0], wo[i, 1]:wo[i, 1]+re[i, 1]-rs[i, 1]].clone() * (1-dist[i, rs[i, 0]:re[i, 0], rs[i, 1]:re[i, 1]])
 
     return (1 - tex).T
 
@@ -310,11 +412,12 @@ def test_point_reg(reduce_overlap: bool = True):
     from tqdm import tqdm
     import imageio
     import matplotlib.colors
+    import timeit
     device = "cuda" if torch.cuda.is_available() else "cpu"
     
     points = torch.rand([500, 2], device=device)
     points.requires_grad = True
-    sigma = torch.tensor([10.0], device=device)**2
+    sigma = torch.tensor([15.0], device=device)**2
     texture_size = torch.tensor([512, 512], device=device)
     loss_func = torch.nn.L1Loss()
 
@@ -328,8 +431,8 @@ def test_point_reg(reduce_overlap: bool = True):
     for i in tqdm(range(opt_steps)):
         optim.zero_grad()
 
-        summed = baked_sum(points, sigma, texture_size)
-        softored = baked_softor(points, sigma, texture_size)
+        summed = baked_sum_2(points, sigma, texture_size)
+        softored = baked_softor_2(points, sigma, texture_size)
 
         #rasterized_points = rasterize_points(points, sigma, texture_size)
         #softored = softor(rasterized_points)
@@ -542,7 +645,40 @@ def test_square_reg():
             cv2.imshow("Optim Lines", np_lines)
             cv2.waitKey(1)
 
+
+def time_it():
+    import timeit, functools
+
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    
+    points = torch.rand([500, 2], device=device)
+    points.requires_grad = True
+    sigma = torch.tensor([10.0], device=device)**2
+    texture_size = torch.tensor([512, 512], device=device)
+    repeats = 50
+
+    og_sum = timeit.Timer(lambda: rasterize_points(points, sigma, texture_size, device).sum(dim=0))
+    print(og_sum.timeit(repeats))
+
+    t_baked_sum = timeit.Timer(lambda: baked_sum(points, sigma, texture_size, 4, device)) 
+    print(t_baked_sum.timeit(repeats))
+
+    t_baked_sum2 = timeit.Timer(lambda: baked_sum_2(points, sigma, texture_size, 4, device)) 
+    print(t_baked_sum2.timeit(repeats))
+
+    og_softor = timeit.Timer(lambda: softor(rasterize_points(points, sigma, texture_size, device))) 
+    print(og_softor.timeit(repeats))
+
+    t_baked_softor1 = timeit.Timer(lambda: baked_softor(points, sigma, texture_size, 4, device)) 
+    print(t_baked_softor1.timeit(repeats))
+
+    t_baked_softor2 = timeit.Timer(lambda: baked_softor_2(points, sigma, texture_size, 4, device)) 
+    print(t_baked_softor2.timeit(repeats))
+
+
+
 if __name__ == "__main__":
+    #time_it()
     test_point_reg(reduce_overlap=True)
     #test_point_reg(reduce_overlap=False)
     #test_line_reg()
