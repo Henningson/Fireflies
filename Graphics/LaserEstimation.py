@@ -368,9 +368,15 @@ def initialize_laser(
             laser_dir, laser_world.inverse()
         )
 
-    # Flip Y
-    # I really gotta fix those coordinate systems...
-    local_laser_dir[:, 1] *= -1.0
+        # local_laser_dir = transforms.transform_points(
+        #    local_laser_dir,
+        #    transforms.toMat4x4(utils_math.getZTransform(0.5 * np.pi, device)),
+        # )
+
+        # local_laser_dir = transforms.transform_points(
+        #    local_laser_dir,
+        #    transforms.toMat4x4(utils_math.getYTransform(-0.5 * np.pi, device)),
+        # )
 
     return laser.Laser(
         firefly_scene.projector,

@@ -26,6 +26,7 @@ class GlobalArgumentParser(argparse.ArgumentParser):
         argparse.ArgumentParser.__init__(self, prog, description, epilog)
 
         self.add_argument("--scene_path", type=str)
+        self.add_argument("--checkpoint_path", type=str)
 
         self.add_argument(
             "--n_depthmaps",
@@ -96,7 +97,7 @@ class GlobalArgumentParser(argparse.ArgumentParser):
 
 if __name__ == "__main__":
     parser = GlobalArgumentParser(
-        prog="Keypoint Regularized Training for Semantic Segmentation",
+        prog="Optimize a laser pattern for a specific scene",
         description="Train a Segmentation Network that is optimized for simultaneously outputting keypoints",
         epilog="Arguments can be used to overwrite values in a config file.",
     )

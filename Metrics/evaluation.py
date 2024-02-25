@@ -5,15 +5,39 @@ import torch
 from torchmetrics.image import PeakSignalNoiseRatio
 
 
+def RSME(x, y):
+    mse_loss = torch.nn.MSELoss(reduction="mean")
+    return torch.sqrt(mse_loss(x, y))
+
+
+def MAE(x, y):
+    l1_loss = torch.nn.L1Loss(reduction="mean")
+    return l1_loss(x, y)
+
+
 class EvaluationCriterion:
     def __init__(self, eval_func):
         self._total_error = 0.0
+        self._errors = []
         self._eval_func = eval_func
+        self._num_evals = 0
 
-    def eval(self, input: torch.tensor, ground_truth: torch.tensor):
-        error = self._eval_func(input, ground_truth)
+    def eval(self, _input: torch.tensor, ground_truth: torch.tensor) -> float:
+        error = self._eval_func(_input, ground_truth)
+        self._errors.append(error)
         self._total_error += error
+        self._num_evals += 1
+
+        return error
+
+    def getTotalError(self) -> float:
         return self._total_error
+
+    def getNormalizedError(self) -> float:
+        return self._total_error / self._num_evals
+
+    def __str__(self) -> str:
+        return f"{self._eval_func.__name__}, Total Error: {self.getTotalError()}, Normalized Error: {self.getNormalizedError()}"
 
 
 class ImageCriterion(EvaluationCriterion):

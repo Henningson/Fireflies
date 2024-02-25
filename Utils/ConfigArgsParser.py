@@ -45,6 +45,7 @@ if __name__ == "__main__":
         epilog="Arguments can be used to overwrite values in a config file.",
     )
     parser.add_argument("--scene_path", type=str, default="scenes/RotObject")
+    parser.add_argument("--checkpoint_path", type=str)
 
     parser.add_argument(
         "--n_depthmaps",

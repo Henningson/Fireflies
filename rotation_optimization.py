@@ -40,10 +40,13 @@ import imageio
 import matplotlib.pyplot as plt
 import time
 import shutil
+from Metrics.evaluation import EvaluationCriterion, RSME
+import torchmetrics.regression
 
 global_scene = None
 global_params = None
 global_key = None
+DEBUG = False
 
 
 @dr.wrap_ad(source="torch", target="drjit")
@@ -99,16 +102,20 @@ def vis_schmexy_depth(ndc_points, depth_image):
     cv2.waitKey(0)
 
 
-def main():
+def main(resume: bool = False, save_path: str = None):
     global global_scene
     global global_params
     global global_key
 
     parser = Args.GlobalArgumentParser()
     args = parser.parse_args()
-    config = CAP.ConfigArgsParser(
-        utils.read_config_yaml(os.path.join(args.scene_path, "config.yml")), args
+
+    config_path = (
+        os.path.join(args.scene_path, "config.yml")
+        if not resume
+        else os.path.join(save_path, "config.yml")
     )
+    config = CAP.ConfigArgsParser(utils.read_config_yaml(config_path), args)
     config.printFormatted()
     config = config.asNamespace()
 
@@ -116,22 +123,24 @@ def main():
     global_scene = mi.load_file(os.path.join(args.scene_path, "scene.xml"))
     global_params = mi.traverse(global_scene)
 
-    save_path = os.path.join(
-        args.scene_path,
-        f'{time.strftime("%Y-%m-%d-%H:%M:%S")}_{config.pattern_initialization}_{config.iterations}',
-    )
-
-    try:
-        os.mkdir(save_path)
-    except:
-        printer.Printer.Warning(
-            f"Folder {save_path} does already exist. Please restart."
+    if not resume:
+        save_path = os.path.join(
+            args.scene_path,
+            f'{time.strftime("%Y-%m-%d-%H:%M:%S")}_{config.pattern_initialization}_{config.iterations}',
         )
-        exit()
-    shutil.copy(
-        os.path.join(args.scene_path, "config.yml"),
-        os.path.join(save_path, "config.yml"),
-    )
+
+        try:
+            os.mkdir(save_path)
+        except:
+            printer.Printer.Warning(
+                f"Folder {save_path} does already exist. Please restart."
+            )
+            exit()
+
+        shutil.copy(
+            os.path.join(args.scene_path, "config.yml"),
+            os.path.join(save_path, "config.yml"),
+        )
 
     if hasattr(config, "downscale_factor"):
         global_params["PerspectiveCamera.film.size"] = (
@@ -159,6 +168,11 @@ def main():
     camera_near_clip = global_params["PerspectiveCamera.near_clip"]
     camera_far_clip = global_params["PerspectiveCamera.far_clip"]
 
+    projector_sensor = global_scene.sensors()[0]
+    projector_x_fov = global_params["PerspectiveCamera_1.x_fov"]
+    projector_near_clip = global_params["PerspectiveCamera_1.near_clip"]
+    projector_far_clip = global_params["PerspectiveCamera_1.far_clip"]
+
     K_CAMERA = mi.perspective_projection(
         camera_sensor.film().size(),
         camera_sensor.film().crop_size(),
@@ -167,7 +181,14 @@ def main():
         camera_near_clip,
         camera_far_clip,
     ).matrix.torch()[0]
-    # K_PROJECTOR = mi.perspective_projection(projector_sensor.film().size(), projector_sensor.film().crop_size(), projector_sensor.film().crop_offset(), projector_x_fov, projector_near_clip, projector_far_clip).matrix.torch()[0]
+    K_PROJECTOR = mi.perspective_projection(
+        projector_sensor.film().size(),
+        projector_sensor.film().crop_size(),
+        projector_sensor.film().crop_offset(),
+        projector_x_fov,
+        projector_near_clip,
+        projector_far_clip,
+    ).matrix.torch()[0]
 
     Laser = LaserEstimation.initialize_laser(
         global_scene,
@@ -178,12 +199,17 @@ def main():
         DEVICE,
     )
 
-    KNN_FEATURES = config.knn_features
-
     # Init U-Net and params
+    KNN_FEATURES = config.knn_features
     MODEL_CONFIG = {"in_channels": KNN_FEATURES, "features": [32, 64, 128, 256]}
     model = RotationEncoder.PeakFinder(config=MODEL_CONFIG).to(DEVICE)
-    model.train()
+    start_iter = 0
+
+    zero_gradient_counter = torch.zeros(
+        Laser._rays.shape[0], dtype=torch.int32, device=DEVICE
+    )
+    zero_grad_threshold = config.zero_grad_threshold
+    ray_mask = torch.ones(Laser._rays.shape[0], dtype=torch.int32, device=DEVICE)
 
     loss_funcs = Losses.Handler([[torch.nn.MSELoss().to(DEVICE), 1.0]])
     loss_values = []
@@ -199,19 +225,32 @@ def main():
         ]
     )
 
+    # If we resume training from a previous checkpoint
+    if resume:
+        state_dict = torch.load(os.path.join(save_path, "model.pth.tar"))
+        model.load_from_dict(state_dict)
+        optim.load_state_dict(state_dict["optimizer"])
+        loss_values = state_dict["losses"]
+        start_iter = state_dict["iteration"]
+
+        # laser_config = utils.read_config_yaml(os.path.join(save_path, "laser.yml"))
+        # np_rays = np.array(laser_config["rays"])
+        Laser._rays = state_dict["laser_rays"]
+        zero_gradient_counter = state_dict["zero_gradient_counter"]
+        ray_mask = state_dict["ray_mask"]
+        resume = False
+
+    model.train()
+
     # scheduler = torch.optim.lr_scheduler.PolynomialLR(optim, total_iters = config.iterations, power=0.99)
     sensor_size = torch.tensor(global_scene.sensors()[0].film().size(), device=DEVICE)
     tex_size = torch.tensor(global_scene.sensors()[1].film().size(), device=DEVICE)
 
-    zero_gradient_counter = torch.zeros(
-        Laser._rays.shape[0], dtype=torch.int32, device=DEVICE
-    )
-    zero_grad_threshold = config.zero_grad_threshold
-    ray_mask = torch.ones(Laser._rays.shape[0], dtype=torch.int32, device=DEVICE)
-
-    for i in (progress_bar := tqdm(range(config.iterations))):
+    for i in (progress_bar := tqdm(range(start_iter, config.iterations))):
         if i == config.warmup_iterations:
             optim.param_groups[1]["lr"] = config.lr_laser
+
+        start_time = time.time()
 
         firefly_scene.randomize()
 
@@ -227,7 +266,7 @@ def main():
         # Extract the 2D coordinate of the mean
         mean_coordinate = (
             (depth_image == torch.min(depth_image)).nonzero()[0].float().flip(dims=[0])
-        )
+        ).unsqueeze(0)
 
         points = Laser.projectRaysToNDC()[:, 0:2]
         points = points[ray_mask.nonzero().flatten()]
@@ -304,14 +343,15 @@ def main():
         if i > 0 and i % config.gradient_accumulation_steps == 0:
 
             # Check which Laser rays do not have any gradient.
-            has_zero_grad = (Laser._rays.grad == 0).any(dim=1) * 1
+            if i > config.warmup_iterations:
+                has_zero_grad = (Laser._rays.grad == 0).any(dim=1) * 1
 
-            # Increase count of zero grad rays by 1 and set everything else back to 0
-            zero_gradient_counter = (
-                zero_gradient_counter + has_zero_grad
-            ) * has_zero_grad
+                # Increase count of zero grad rays by 1 and set everything else back to 0
+                zero_gradient_counter = (
+                    zero_gradient_counter + has_zero_grad
+                ) * has_zero_grad
 
-            ray_mask = ray_mask * ~(zero_gradient_counter >= zero_grad_threshold)
+                ray_mask = ray_mask * ~(zero_gradient_counter >= zero_grad_threshold)
 
             optim.step()
             optim.zero_grad()
@@ -322,90 +362,108 @@ def main():
                 )
             )
 
-            if config.visualize:
-                with torch.no_grad():
-                    render_im = render(texture_init.unsqueeze(-1))
-                    render_im = (
-                        torch.clamp(render_im, 0, 1)[:, :, [2, 1, 0]].cpu().numpy()
+        if config.visualize and i % config.gradient_accumulation_steps == 0:
+            with torch.no_grad():
+                render_im = render(texture_init.unsqueeze(-1))
+                render_im = torch.clamp(render_im, 0, 1)[:, :, [2, 1, 0]].cpu().numpy()
+                render_circle = cv2.circle(
+                    render_im.copy(),
+                    pred_peak.detach().cpu().numpy().flatten().astype(np.uint8),
+                    3,
+                    (0, 255, 0),
+                    -1,
+                )
+                render_circle = cv2.circle(
+                    render_circle,
+                    mean_coordinate.detach().cpu().numpy().flatten().astype(np.uint8),
+                    3,
+                    (0, 0, 255),
+                    -1,
+                )
+                render_circle = cv2.circle(
+                    render_circle,
+                    point_coordinates[idx.flatten()][0]
+                    .detach()
+                    .cpu()
+                    .numpy()
+                    .flatten()
+                    .astype(np.uint8),
+                    3,
+                    (255, 255, 0),
+                    -1,
+                )
+                render_circle = cv2.circle(
+                    render_circle,
+                    point_coordinates[idx.flatten()][1]
+                    .detach()
+                    .cpu()
+                    .numpy()
+                    .flatten()
+                    .astype(np.uint8),
+                    3,
+                    (255, 255, 0),
+                    -1,
+                )
+
+                cv2.imshow("Render", render_circle)
+                # cv2.waitKey(1)
+
+                Laser.clamp_to_fov(clamp_val=0.99)
+                Laser.normalize_rays()
+                sparse_depth = torch.clamp(per_point_depth, 0, 1)
+                sparse_depth = sparse_depth.detach().cpu().numpy() * 255
+                sparse_depth = sparse_depth.astype(np.uint8)
+                # print(point_coordinates[idx.flatten()])
+                cv2.imshow("Points", sparse_depth)
+                cv2.waitKey(1)
+
+                if config.save_images:
+                    optim_path = os.path.join(save_path, "render")
+
+                    if i == 0:
+                        try:
+                            os.mkdir(optim_path)
+                        except:
+                            print(f"Path {optim_path} already exists")
+
+                    image_string = "{:05d}.png".format(
+                        i // config.gradient_accumulation_steps
                     )
-                    render_circle = cv2.circle(
-                        render_im.clone(),
-                        pred_peak.detach().cpu().numpy().flatten().astype(np.uint8),
-                        3,
-                        (0, 255, 0),
-                        -1,
-                    )
-                    render_circle = cv2.circle(
-                        render_circle,
-                        mean_coordinate.detach()
-                        .cpu()
-                        .numpy()
-                        .flatten()
-                        .astype(np.uint8),
-                        3,
-                        (0, 0, 255),
-                        -1,
-                    )
-                    render_circle = cv2.circle(
-                        render_circle,
-                        point_coordinates[idx.flatten()][0]
-                        .detach()
-                        .cpu()
-                        .numpy()
-                        .flatten()
-                        .astype(np.uint8),
-                        3,
-                        (255, 255, 0),
-                        -1,
-                    )
-                    render_circle = cv2.circle(
-                        render_circle,
-                        point_coordinates[idx.flatten()][1]
-                        .detach()
-                        .cpu()
-                        .numpy()
-                        .flatten()
-                        .astype(np.uint8),
-                        3,
-                        (255, 255, 0),
-                        -1,
+                    cv2.imwrite(
+                        os.path.join(optim_path, image_string),
+                        (render_im * 255).astype(np.uint8),
                     )
 
-                    cv2.imshow("Render", render_circle)
-                    # cv2.waitKey(1)
+        if not DEBUG and time.time() - start_time > 0.5:
+            resume = True
+            print("Restarting.")
+            break
 
-                    Laser.clamp_to_fov(clamp_val=0.99)
-                    Laser.normalize_rays()
-                    sparse_depth = torch.clamp(per_point_depth, 0, 1)
-                    sparse_depth = sparse_depth.detach().cpu().numpy() * 255
-                    sparse_depth = sparse_depth.astype(np.uint8)
-                    print(point_coordinates[idx.flatten()])
-                    cv2.imshow("Points", sparse_depth)
-                    cv2.waitKey(1)
-
-                    if config.save_images:
-                        optim_path = os.path.join(save_path, optim_path)
-                        os.mkdir(optim_path)
-                        image_string = "{:05d}.png".format(
-                            i // config.gradient_accumulation_steps
-                        )
-                        cv2.imwrite(
-                            os.path.join(optim_path, image_string),
-                            (render_im * 255).astype(np.uint8),
-                        )
-
-    printer.Printer.OKG("Optimization done. Saving.")
-    checkpoint = {"optimizer": optim.state_dict()}
+    printer.Printer.OKG("Saving")
+    checkpoint = {
+        "optimizer": optim.state_dict(),
+        "laser_rays": Laser._rays,
+        "iteration": i + 1,
+        "losses": loss_values,
+        "ray_mask": ray_mask,
+        "zero_gradient_counter": zero_gradient_counter,
+    }
     checkpoint.update(model.get_statedict())
 
     torch.save(checkpoint, os.path.join(save_path, "model.pth.tar"))
-    Laser.save(os.path.join(save_path, "laser.yml"))
 
-    print("Finished everything.")
-
-    plt.plot(loss_values)
-    plt.show()
+    return resume, save_path
 
 
 if __name__ == "__main__":
-    main()
+    # resume = True
+    # save_path = "/home/nu94waro/Documents/Vocalfold/DSLPO/scenes/RotBlob/2024-02-23-13:10:47_GRID_1/"
+
+    resume = False
+    save_path = None
+
+    resume, save_path = main(resume, save_path)
+    while resume:
+        resume, save_path = main(resume, save_path)
+
+    printer.Printer.OKG("Optimization done.")

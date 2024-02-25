@@ -78,16 +78,17 @@ def poissonDiskSampling(radius, k=30, radiusType="default"):
                 continue
 
             # Check that particle is not too close to other particle
-            newGridCoords = getGridCoordinates((newCoords[1], newCoords[0]))
+            newGridCoords = getGridCoordinates((newCoords[0], newCoords[1]))
 
-            radiusThere = np.ceil(radius[newGridCoords[1], newGridCoords[0]])
+            radiusThere = np.ceil(radius[newGridCoords[0], newGridCoords[1]])
+
             gridRangeX = (
-                np.max([newGridCoords[0] - radiusThere, 0]).astype("int"),
-                np.min([newGridCoords[0] + radiusThere + 1, gridWidth]).astype("int"),
+                np.max([newGridCoords[1] - radiusThere, 0]).astype("int"),
+                np.min([newGridCoords[1] + radiusThere + 1, gridWidth]).astype("int"),
             )
             gridRangeY = (
-                np.max([newGridCoords[1] - radiusThere, 0]).astype("int"),
-                np.min([newGridCoords[1] + radiusThere + 1, gridHeight]).astype("int"),
+                np.max([newGridCoords[0] - radiusThere, 0]).astype("int"),
+                np.min([newGridCoords[0] + radiusThere + 1, gridHeight]).astype("int"),
             )
 
             searchGrid = grid[
@@ -100,7 +101,7 @@ def poissonDiskSampling(radius, k=30, radiusType="default"):
                 queue.append(newCoords)
                 particleCoordinates.append(newCoords)
                 nParticle += 1
-                grid[newGridCoords[1], newGridCoords[0]] = nParticle
+                grid[newGridCoords[0], newGridCoords[1]] = nParticle
                 success = True
 
             else:

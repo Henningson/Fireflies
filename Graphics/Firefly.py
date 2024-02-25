@@ -298,7 +298,7 @@ if __name__ == "__main__":
     ]
     mitsuba_params.update()
 
-    sigma = torch.tensor([config.sigma], device="cuda").sqrt()
+    sigma = torch.tensor([config.sigma], device="cuda")
     texture_size = torch.tensor(mitsuba_scene.sensors()[1].film().size(), device="cuda")
 
     firefly_scene = Scene(mitsuba_params, base_path, sequential_animation=True)
@@ -337,6 +337,7 @@ if __name__ == "__main__":
     # texture_init = torch.flipud(texture_init)
 
     cv2.imshow("Wat", texture_init.detach().cpu().numpy())
+    cv2.waitKey(1)
     mitsuba_params["tex.data"] = texture_init.unsqueeze(-1)
 
     # firefly_scene.randomize()
@@ -345,7 +346,7 @@ if __name__ == "__main__":
     for i in tqdm(range(100000)):
         firefly_scene.randomize()
 
-        render_im = mi.render(mitsuba_scene)
+        render_im = mi.render(mitsuba_scene, spp=config.spp)
         render_im = torch.clamp(render_im.torch(), 0, 1)[:, :, [2, 1, 0]].cpu().numpy()
         cv2.imshow("Render", render_im)
         cv2.waitKey(1)
