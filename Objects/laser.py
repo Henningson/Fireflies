@@ -56,12 +56,14 @@ class Laser(Camera.Camera):
         rays = transforms.transform_points(
             rays,
             transforms.toMat4x4(
-                utils_math.getZTransform(0.5 * np.pi, intrinsic_matrix.device)
+                utils_math.getZTransform(-0.5 * np.pi, intrinsic_matrix.device)
             ),
         )
 
         # Normalize
-        return rays / torch.linalg.norm(rays, dim=-1, keepdims=True)
+        rays = rays / torch.linalg.norm(rays, dim=-1, keepdims=True)
+        rays[:, 2] *= -1.0
+        return rays
 
     @staticmethod
     def generate_blue_noise_rays(
@@ -112,7 +114,9 @@ class Laser(Camera.Camera):
         # )
 
         # Normalize
-        return rays / torch.linalg.norm(rays, dim=-1, keepdims=True)
+        rays = rays / torch.linalg.norm(rays, dim=-1, keepdims=True)
+        rays[:, 2] *= -1.0
+        return rays
 
     def __init__(
         self,

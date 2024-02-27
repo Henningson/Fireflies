@@ -124,10 +124,16 @@ def main(resume: bool = False, save_path: str = None):
     global_params = mi.traverse(global_scene)
 
     if not resume:
+        save_base = os.path.join(args.scene_path, "optim")
         save_path = os.path.join(
-            args.scene_path,
+            save_base,
             f'{time.strftime("%Y-%m-%d-%H:%M:%S")}_{config.pattern_initialization}_{config.iterations}',
         )
+
+        try:
+            os.mkdir(save_base)
+        except:
+            pass
 
         try:
             os.mkdir(save_path)

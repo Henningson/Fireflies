@@ -185,7 +185,7 @@ class Model(nn.Module):
         x = self.final_conv(x)
 
         # Finally clamping
-        return torch.nn.functional.sigmoid(x)
+        return x  # torch.nn.functional.sigmoid(x)
 
 
 def test():

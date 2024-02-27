@@ -36,7 +36,7 @@ class Decoder(nn.Module):
             skip_connection = self.encoder.skip_connections[idx // 2]
 
             if x.shape != skip_connection.shape:
-                x = TF.resize(x, size=skip_connection.shape[2:])
+                x = TF.resize(x, size=skip_connection.shape[2:], antialias=True)
 
             concat_skip = torch.cat((skip_connection, x), dim=1)
             x = self.ups[idx + 1](concat_skip)
@@ -189,7 +189,8 @@ class Model(nn.Module):
         x = self.final_conv(x)
 
         # Finally clamping
-        return torch.nn.functional.sigmoid(x)
+        # return torch.nn.functional.sigmoid(x)
+        return x
 
 
 def test():
