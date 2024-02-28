@@ -41,7 +41,6 @@ import matplotlib.pyplot as plt
 import time
 import shutil
 from Metrics.evaluation import EvaluationCriterion, RSME
-import torchmetrics.regression
 
 global_scene = None
 global_params = None

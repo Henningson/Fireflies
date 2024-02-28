@@ -173,20 +173,8 @@ class Laser(Camera.Camera):
         # If randomize is set, spawn a new random laser inside NDC.
         # Else, clamp it to the edge.
         ndc_coords = self.projectRaysToNDC()
-        xy_coords = ndc_coords[:, 0:2]
-        out_of_bounds_indices = (
-            (xy_coords > 1.0 - epsilon) | (xy_coords < 0.0 + epsilon)
-        ).any(dim=1)
-
-        out_of_bounds_points = ndc_coords[out_of_bounds_indices]
-
-        if out_of_bounds_points.nelement() == 0:
-            return 0
-
-        clamped_ndc_points = torch.clamp(xy_coords, -clamp_val, clamp_val)
-        clamped_rays = self.projectNDCPointsToWorld(
-            transforms.convert_points_to_homogeneous(clamped_ndc_points)
-        )
+        ndc_coords[:, 0:2] = torch.clamp(ndc_coords[:, 0:2], 1 - clamp_val, clamp_val)
+        clamped_rays = self.projectNDCPointsToWorld(ndc_coords)
         self._rays[:] = self.normalize(clamped_rays)
 
     def randomize_laser_out_of_bounds(self) -> None:
@@ -262,7 +250,10 @@ class Laser(Camera.Camera):
             ],
             device=self.device,
         )
-        return transforms.transform_points(points, self._perspective.inverse() @ FLIP_Y)
+
+        return transforms.transform_points(
+            points, (self._perspective @ FLIP_Y).inverse()
+        )
 
     def generateTexture(self, sigma: float, texture_size: List[int]) -> torch.tensor:
         points = self.projectRaysToNDC()[:, 0:2]

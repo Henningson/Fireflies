@@ -28,7 +28,7 @@ class Decoder(nn.Module):
             self.ups.append(
                 nn.ConvTranspose2d(feature * 2, feature, kernel_size=2, stride=2)
             )
-            self.ups.append(DoubleConv(feature * 2, feature))
+            self.ups.append(GatedBlock(feature * 2, feature))
 
     def forward(self, x):
         for idx in range(0, len(self.ups), 2):
@@ -54,7 +54,7 @@ class Encoder(nn.Module):
         # Downsampling
         for i, feature in enumerate(features):
             self.downs.append(
-                DoubleConv(in_channels + 1 if i > 0 else in_channels, feature)
+                GatedBlock(in_channels if i > 0 else in_channels, feature)
             )
             in_channels = feature
 
@@ -62,7 +62,7 @@ class Encoder(nn.Module):
         self.skip_connections = []
         x = input[0]
         for i, down in enumerate(self.downs):
-            x = down(torch.concat([x, input[i]], dim=1) if i > 0 else x)
+            x = down(x + (input[i] if i > 0 else 0))
             self.skip_connections.append(x)
             x = self.pool(x)
 
@@ -176,11 +176,7 @@ class Model(nn.Module):
         self.encoder.load_state_dict(dict["Encoder"])
         self.bottleneck.load_state_dict(dict["Bottleneck"])
         self.decoder.load_state_dict(dict["Decoder"])
-
-        try:
-            self.final_conv.load_state_dict(dict["LastConv"])
-        except:
-            print("Final conv not initialized.")
+        self.final_conv.load_state_dict(dict["LastConv"])
 
     def forward(self, x):
         x = self.encoder(x)
