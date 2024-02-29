@@ -36,6 +36,10 @@ class ConfigArgsParser(dict):
     def asNamespace(self) -> argparse.Namespace:
         return argparse.Namespace(**self)
 
+    def save(self, path):
+        with open(path, "w") as outfile:
+            yaml.dump(dict(self), outfile, default_flow_style=False)
+
 
 if __name__ == "__main__":
 
