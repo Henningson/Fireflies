@@ -1,8 +1,14 @@
+import sys, os
+
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "Utils"))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "Objects"))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "Graphics"))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "Objects"))
+
 import torch
-import Utils.utils as utils
-import Utils.math as math
+import utils
+import math_helper
 import numpy as np
-import mitsuba as mi
 
 
 def convert_points_to_homogeneous(points: torch.tensor) -> torch.tensor:
@@ -60,7 +66,7 @@ def matToMitsuba(mat):
     # init_rot[0, 0] = -1.0
     # init_rot[1, 2] = -1.0
 
-    rotmat = toMat4x4(math.getPitchTransform(np.pi * 0.5, mat.device))
+    rotmat = toMat4x4(math_helper.getPitchTransform(np.pi * 0.5, mat.device))
 
     # coordinate_shift = torch.eye(4, device=mat.device)
     # coordinate_shift[1, 1] = 0.0

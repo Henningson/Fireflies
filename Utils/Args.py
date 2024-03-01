@@ -39,6 +39,12 @@ class GlobalArgumentParser(argparse.ArgumentParser):
             help="Add this as a constant value to the initial sampling map to also sample from positions that do not vary in depth.",
         )
 
+        self.add_argument(
+            "--pattern_initialization",
+            type=str,
+            help="Define the type of pattern. Choose between GRID, POISSON, SMARTY and RANDOM.",
+        )
+
         self.add_argument("--n_beams", type=int, help="The number of laser beams.")
         self.add_argument(
             "--spp",

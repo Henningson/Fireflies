@@ -1,7 +1,14 @@
+import sys, os
+
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "Utils"))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "Objects"))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "Graphics"))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "Objects"))
+
 import torch
-import Utils.utils
-import Objects.Transformable as Transformable
-import Utils.transforms
+import utils
+import Transformable
+import transforms
 
 
 class Camera:

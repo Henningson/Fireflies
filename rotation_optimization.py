@@ -19,7 +19,7 @@ import Graphics.Firefly as Firefly
 import Graphics.LaserEstimation as LaserEstimation
 import Graphics.depth as depth
 import Utils.transforms as transforms
-import Utils.math as math
+import Utils.math_helper as math_helper
 import Objects.laser as laser
 import Models.GatedUNet as GatedUNet
 import Models.RotationEncoder as RotationEncoder

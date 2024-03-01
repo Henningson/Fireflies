@@ -1,3 +1,9 @@
+import sys, os
+
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "Utils"))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "Objects"))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "Graphics"))
+
 from bs4 import BeautifulSoup
 from pathlib import Path
 import os
@@ -5,18 +11,12 @@ import mitsuba as mi
 
 mi.set_variant("cuda_ad_rgb")
 
-import drjit as dr
-import Objects.entity as entity
-import Utils.utils as utils
+import utils
 import torch
-import Objects.laser as laser
-import Objects.Camera as Camera
-import Objects.Transformable as Transformable
-import Utils.transforms as transforms
+import Transformable
 import numpy as np
-import Utils.math as utils_math
-import Graphics.LaserEstimation as LaserEstimation
-import math
+import math_helper
+import LaserEstimation
 
 
 class Scene:
@@ -209,7 +209,7 @@ class Scene:
 
         # Couldn't find a better way to get this torch tensor into mitsuba Transform4f
         worldMatrix = self.camera.world()
-        worldMatrix[0:3, 0:3] = worldMatrix[0:3, 0:3] @ utils_math.getYTransform(
+        worldMatrix[0:3, 0:3] = worldMatrix[0:3, 0:3] @ math_helper.getYTransform(
             np.pi, self._device
         )
         # worldMatrix[0:3, 0:3] = worldMatrix[0:3, 0:3]
@@ -222,7 +222,7 @@ class Scene:
         # TODO: Remove key
         key = "Projector"
         worldMatrix = self.projector.world()
-        worldMatrix[0:3, 0:3] = worldMatrix[0:3, 0:3] @ utils_math.getYTransform(
+        worldMatrix[0:3, 0:3] = worldMatrix[0:3, 0:3] @ math_helper.getYTransform(
             np.pi, self._device
         )
 
@@ -265,26 +265,14 @@ class Scene:
         return None
 
 
-def generate_epipolar_shadow(scene):
-    pass
-
-
-@dr.wrap_ad(source="torch", target="drjit")
-def render(texture, spp=256, seed=1):
-    global_params.update()
-    return mi.render(
-        global_scene, global_params, spp=spp, seed=seed, seed_grad=seed + 1
-    )
-
-
 if __name__ == "__main__":
     from tqdm import tqdm
     import matplotlib.pyplot as plt
     import cv2
-    import Graphics.rasterization as rasterization
+    import rasterization
     from argparse import Namespace
 
-    base_path = "scenes/FLAME SHAPE/"
+    base_path = "scenes/RealColon/"
 
     config = utils.read_config_yaml(os.path.join(base_path, "config.yml"))
     config = Namespace(**config)
@@ -314,6 +302,7 @@ if __name__ == "__main__":
     )
     points = laser_init.projectRaysToNDC()[:, 0:2]
 
+    """
     colors = [(0.0, 0.1921, 0.4156), (0, 0.69, 0.314)]  # R -> G -> B
     fig = plt.figure(frameon=False)
     fig.set_size_inches(16 / 16 * 10, 9 / 16 * 10)
@@ -331,13 +320,16 @@ if __name__ == "__main__":
     fig.canvas.draw()
     img_plot = np.array(fig.canvas.renderer.buffer_rgba())
     cv2.imshow("Sexy Tex", img_plot[:, :, [2, 1, 0]])
+    """
 
     texture_init = rasterization.rasterize_points(points, sigma, texture_size)
     texture_init = rasterization.softor(texture_init)
+
+    texture_init = torch.ones(texture_init.shape, device=texture_init.device)
     # texture_init = torch.flipud(texture_init)
 
-    cv2.imshow("Wat", texture_init.detach().cpu().numpy())
-    cv2.waitKey(1)
+    # cv2.imshow("Wat", texture_init.detach().cpu().numpy())
+    # cv2.waitKey(1)
     mitsuba_params["tex.data"] = texture_init.unsqueeze(-1)
 
     # firefly_scene.randomize()
@@ -346,7 +338,7 @@ if __name__ == "__main__":
     for i in tqdm(range(100000)):
         firefly_scene.randomize()
 
-        render_im = mi.render(mitsuba_scene, spp=config.spp)
+        render_im = mi.render(mitsuba_scene, spp=50)
         render_im = torch.clamp(render_im.torch(), 0, 1)[:, :, [2, 1, 0]].cpu().numpy()
         cv2.imshow("Render", render_im)
-        cv2.waitKey(1)
+        cv2.waitKey(0)

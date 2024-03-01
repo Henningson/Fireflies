@@ -1,14 +1,21 @@
+import sys, os
+
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "Utils"))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "Objects"))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "Graphics"))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "Objects"))
+
 import drjit as dr
 import torch
-import Utils.utils as utils
+import utils
 import numpy as np
 import math
-import Graphics.rasterization as rasterization
-import Utils.transforms as transforms
-import Utils.bridson as bridson
-import Utils.math as utils_math
-import Objects.Transformable as Transformable
-import Objects.Camera as Camera
+import rasterization
+import transforms
+import bridson
+import math_helper as utils_math
+import Transformable
+import Camera
 import yaml
 
 from typing import List
@@ -38,6 +45,33 @@ class Laser(Camera.Camera):
         return laserRays / torch.linalg.norm(laserRays, dim=-1, keepdims=True)
 
     @staticmethod
+    def generate_uniform_rays_by_count(
+        num_beams_x: int,
+        num_beams_y: int,
+        intrinsic_matrix: torch.tensor,
+        device: torch.cuda.device = torch.device("cuda"),
+    ) -> torch.tensor:
+        laserRays = torch.zeros((num_beams_y * num_beams_x, 3), device=device)
+
+        x_steps = torch.arange((1 / num_beams_x) / 2, 1, 1 / num_beams_x)
+        y_steps = torch.arange((1 / num_beams_y) / 2, 1, 1 / num_beams_y)
+
+        xy = torch.stack(torch.meshgrid(x_steps, y_steps))
+        xy = xy.movedim(0, -1).reshape(-1, 2)
+
+        # Set Z to 1
+        laserRays[:, 0:2] = xy
+        laserRays[:, 2] = -1.0
+
+        # Project to world
+        rays = transforms.transform_points(laserRays, intrinsic_matrix.inverse())
+
+        # Normalize
+        rays = rays / torch.linalg.norm(rays, dim=-1, keepdims=True)
+        rays[:, 2] *= -1.0
+        return rays
+
+    @staticmethod
     def generate_random_rays(
         num_beams: int,
         intrinsic_matrix: torch.tensor,
@@ -52,13 +86,6 @@ class Laser(Camera.Camera):
 
         # Project to world
         rays = transforms.transform_points(spawned_points, intrinsic_matrix.inverse())
-
-        rays = transforms.transform_points(
-            rays,
-            transforms.toMat4x4(
-                utils_math.getZTransform(-0.5 * np.pi, intrinsic_matrix.device)
-            ),
-        )
 
         # Normalize
         rays = rays / torch.linalg.norm(rays, dim=-1, keepdims=True)

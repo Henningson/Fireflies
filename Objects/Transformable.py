@@ -1,15 +1,23 @@
+import sys, os
+
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "Utils"))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "Objects"))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "Graphics"))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "Objects"))
+
 import torch
-import Utils.utils as utils
-import Utils.math as utilsmath
-import Utils.transforms as transforms
 import random
 from typing import List, Tuple
-import os
 import pywavefront
 import numpy as np
 from geomdl import NURBS
-import Objects.flame_pytorch.flame as flame
 from argparse import Namespace
+
+
+import utils
+import flame_pytorch.flame as flame
+import math_helper as utilsmath
+import transforms
 
 
 class Transformable:
@@ -135,24 +143,41 @@ class Curve(Transformable):
 
         self._curve = curve
         self._curve.ctrlpts = self.convertToLocal(self._curve.ctrlpts)
+        self.curve_count_epsilon = 0.0
+
+        Curve.count = self.curve_count_epsilon
 
         self._continuous = True
         self._interp_steps = 300
         self._interp_delta = 1.0 / self._interp_steps
 
     def convertToLocal(self, controlpoints: List[List[float]]) -> List[List[float]]:
-        a = torch.tensor(controlpoints).to(self._device)
-        # a = transforms.transform_points(a, transforms.toMat4x4(utilsmath.getXTransform(np.pi, self._device)))
-        a = transforms.transform_points(a, self._world.inverse())
-        # a[:, 0] *= -1.0
-        #
-        return a.tolist()
+        return controlpoints
 
     def setContinuous(self, continuous: bool) -> None:
         self._continuous = continuous
 
     def sampleRotation(self) -> torch.tensor:
-        return utils.torch.eye(4, device=self._device)
+        t = Curve.count
+        t_new = Curve.count + 0.001
+
+        t_new = torch.tensor(self._curve.evaluate_single(t_new), device=self._device)
+        t = torch.tensor(self._curve.evaluate_single(t), device=self._device)
+
+        curve_direction = t_new - t
+        curve_direction[0] *= -1.0
+        curve_direction[2] *= -1.0
+
+        # curve_normal = torch.tensor(self._curve.normal(t), device=self._device)
+        # curve_direction /= torch.linalg.norm(curve_direction)
+        # curve_normal /= torch.linalg.norm(curve_normal)
+
+        # camera_up_vector = torch.tensor([0, 0, 1], device=self._device)
+
+        camera_direction = torch.tensor([0.0, 1.0, 0.0], device=self._device)
+        return transforms.toMat4x4(
+            utilsmath.rotation_matrix_from_vectors(camera_direction, curve_direction)
+        )
 
     def sampleTranslation(self) -> torch.tensor:
         translationMatrix = torch.eye(4, device=self._device)
@@ -160,16 +185,18 @@ class Curve(Transformable):
 
         if self._continuous:
             Curve.count += self._interp_delta
-            if Curve.count > 1.0:
-                Curve.count = 0.0
+            if Curve.count > 1.0 - self.curve_count_epsilon:
+                Curve.count = self.curve_count_epsilon
 
             random_translation = Curve.count
+        # Curve.count = 0.0
 
         translation = self._curve.evaluate_single(random_translation)
 
-        translationMatrix[0, 3] = translation[0]
+        translationMatrix[0, 3] = -translation[0]
         translationMatrix[1, 3] = translation[1]
-        translationMatrix[2, 3] = translation[2]
+        translationMatrix[2, 3] = -translation[2]
+
         return translationMatrix
 
     def randomize(self) -> None:
@@ -208,9 +235,6 @@ class Mesh(Transformable):
             vertices,
             transforms.toMat4x4(utilsmath.getXTransform(np.pi * 0.5, self._device)),
         )
-        # vertices = transforms.transform_points(vertices, self._world)
-        # a[:, 0] *= -1.0
-        #
         return vertices
 
     def setFaces(self, faces: List[float]) -> None:

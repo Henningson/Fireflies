@@ -1,22 +1,29 @@
+import sys, os
+
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "Utils"))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "Objects"))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "Graphics"))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "Objects"))
+
 import mitsuba as mi
 
 mi.set_variant("cuda_ad_rgb")
 import cv2
 import numpy as np
-import Objects.intersections as intersections
 import torch
-
-import Utils.transforms as transforms
-import Utils.utils as utils
-
-import Graphics.depth as depth
-import Objects.laser as laser
 
 from scipy.spatial import ConvexHull
 import numpy as np
 import matplotlib.pyplot as plt
-import Utils.math as utils_math
-import Utils.bridson as bridson
+
+import intersections
+import bridson
+import math_helper as utils_math
+import depth
+import LaserEstimation
+import utils
+import transforms
+import laser
 
 
 import math
@@ -288,10 +295,10 @@ def initialize_laser(
         )
     elif mode == "GRID":
         grid_width = int(math.sqrt(config.n_beams))
-        local_laser_dir = laser.Laser.generate_uniform_rays(
-            laser_fov * radians / grid_width,
+        local_laser_dir = laser.Laser.generate_uniform_rays_by_count(
             num_beams_x=grid_width,
             num_beams_y=grid_width,
+            intrinsic_matrix=LASER_K,
             device=device,
         )
     elif mode == "SMARTY":

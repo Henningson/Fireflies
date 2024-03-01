@@ -1,12 +1,19 @@
+import sys, os
+
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "Utils"))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "Objects"))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "Graphics"))
+sys.path.append(os.path.join(os.path.dirname(__file__), "..", "Objects"))
+
 import torch
 import mitsuba as mi
 
 mi.set_variant("cuda_ad_rgb")
 import drjit as dr
-import Graphics.LaserEstimation as LaserEstimation
+import LaserEstimation
 import cv2
 import numpy as np
-import Utils.utils as utils
+import utils
 
 from tqdm import tqdm
 

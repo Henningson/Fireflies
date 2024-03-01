@@ -166,13 +166,14 @@ def main(scene_path: str = None, checkpoint_path: str = None):
     state_dict = torch.load(os.path.join(checkpoint_path, "model.pth.tar"))
     model.load_from_dict(state_dict)
     Laser._rays = state_dict["laser_rays"]
+    num_beams = Laser._rays.shape[0]
 
     rmse = EvaluationCriterion(RSME)
     mae = EvaluationCriterion(MAE)
 
     printer.Printer.Header(f"Beginning evaluation of scene {scene_path}")
     printer.Printer.Header(f"Checkpoint: {checkpoint_path}")
-    printer.Printer.OKB(f"Number of laser beams: {Laser._rays.shape[0]}")
+    printer.Printer.OKB(f"Number of laser beams: {num_beams}")
 
     model.eval()
     for _ in tqdm(range(config.eval_steps)):
@@ -222,31 +223,45 @@ def main(scene_path: str = None, checkpoint_path: str = None):
     print(rmse)
     print(mae)
 
+    return path, num_beams, rmse, mae
+
 
 if __name__ == "__main__":
 
-    main()
-    exit()
-
     scene_path = "scenes/Vocalfold/"
+    checkpoint_base = os.path.join(
+        scene_path,
+        "optim",
+        "GridPoints",
+    )
 
     eval_pathes = [
-        "2024-02-29-18:56:25_POISSON_15000_10",
-        "2024-02-29-19:08:59_POISSON_15000_20",
-        "2024-02-29-19:20:45_POISSON_15000_30",
-        "2024-02-29-19:31:42_POISSON_15000_40",
-        "2024-02-29-19:42:25_POISSON_15000_50",
-        "2024-02-29-19:53:15_POISSON_15000_60",
-        "2024-02-29-20:04:03_POISSON_15000_70",
-        "2024-02-29-20:15:01_POISSON_15000_80",
-        "2024-02-29-20:26:04_POISSON_15000_90",
-        "2024-02-29-20:37:05_POISSON_15000_100",
-        "2024-02-29-20:48:13_POISSON_15000_125",
-        "2024-02-29-20:59:24_POISSON_15000_150",
-        "2024-02-29-21:10:44_POISSON_15000_175",
-        "2024-02-29-21:22:28_POISSON_15000_200",
+        "2024-03-01-14:32:39_GRID_15000_81",
+        "2024-03-01-14:44:18_GRID_15000_100",
+        "2024-03-01-14:55:46_GRID_15000_121",
+        "2024-03-01-15:07:37_GRID_15000_144",
+        "2024-03-01-15:20:09_GRID_15000_169",
+        "2024-03-01-15:33:41_GRID_15000_225",
+        "2024-03-01-15:48:17_GRID_15000_256",
+        "2024-03-01-16:02:59_GRID_15000_289",
+        "2024-03-01-16:18:22_GRID_15000_324",
     ]
 
+    paths = []
+    rsmes = []
+    maes = []
+    num_beams = []
+
     for path in eval_pathes:
-        checkpoint_path = os.path.join(scene_path, "optim", path)
-        main(scene_path, checkpoint_path)
+        checkpoint_path = os.path.join(checkpoint_base, path)
+        path, num_beam, rsme, mae = main(scene_path, checkpoint_path)
+
+        paths.append(path.split("/")[-1])
+        num_beams.append(num_beam)
+        rsmes.append(rsme)
+        maes.append(mae)
+
+    for path, num_beam, rsme, mae in zip(paths, num_beams, rsmes, maes):
+        print(
+            f"{path}: Beams: {num_beam}, RSME: {rsme.getNormalizedError():.3f}, MAE: {mae.getNormalizedError():.3f}"
+        )

@@ -19,7 +19,7 @@ import Graphics.Firefly as Firefly
 import Graphics.LaserEstimation as LaserEstimation
 import Graphics.depth as depth
 import Utils.transforms as transforms
-import Utils.math as math
+import Utils.math_helper as math_helper
 import Objects.laser as laser
 import Models.GatedUNet as GatedUNet
 import Models.UNet as UNet
@@ -463,3 +463,7 @@ if __name__ == "__main__":
     resume, save_path = main(resume, save_path)
     while resume:
         resume, save_path = main(resume, save_path)
+
+    """
+ python main.py --scene_path "scenes/Vocalfold" --pattern_initialization "GRID" --n_beams 81;python main.py --scene_path "scenes/Vocalfold" --pattern_initialization "GRID" --n_beams 100;python main.py --scene_path "scenes/Vocalfold" --pattern_initialization "GRID" --n_beams 121;python main.py --scene_path "scenes/Vocalfold" --pattern_initialization "GRID" --n_beams 144;python main.py --scene_path "scenes/Vocalfold" --pattern_initialization "GRID" --n_beams 169;python main.py --scene_path "scenes/Vocalfold" --pattern_initialization "GRID" --n_beams 225;python main.py --scene_path "scenes/Vocalfold" --pattern_initialization "GRID" --n_beams 256;python main.py --scene_path "scenes/Vocalfold" --pattern_initialization "GRID" --n_beams 289;python main.py --scene_path "scenes/Vocalfold" --pattern_initialization "GRID" --n_beams 324; 
+    """
