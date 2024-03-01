@@ -23,7 +23,7 @@ class EvaluationCriterion:
         self._num_evals = 0
 
     def eval(self, _input: torch.tensor, ground_truth: torch.tensor) -> float:
-        error = self._eval_func(_input, ground_truth)
+        error = self._eval_func(_input, ground_truth).detach().cpu().item()
         self._errors.append(error)
         self._total_error += error
         self._num_evals += 1

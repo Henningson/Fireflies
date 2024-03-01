@@ -67,7 +67,7 @@ def subsampled_point_raster(ndc_points, num_subsamples, sigma, sensor_size):
     return subsampled_rastered_depth
 
 
-def main():
+def main(scene_path: str = None, checkpoint_path: str = None):
     global global_scene
     global global_params
     global global_key
@@ -75,17 +75,24 @@ def main():
     parser = Args.GlobalArgumentParser()
     args = parser.parse_args()
 
-    config_path = (
-        os.path.join(args.scene_path, "config.yml")
-        if not resume
-        else os.path.join(save_path, "config.yml")
-    )
+    if args.scene_path is None and scene_path is None:
+        printer.Printer.Error("Please specify a path to the scene")
+        exit()
+
+    if args.checkpoint_path is None and checkpoint_path is None:
+        printer.Printer.Error("Please specify a path to the checkpoint folder.")
+        exit()
+
+    scene_path = args.scene_path if args.scene_path else scene_path
+    checkpoint_path = args.checkpoint_path if args.checkpoint_path else checkpoint_path
+
+    config_path = os.path.join(checkpoint_path, "config.yml")
     config_args = CAP.ConfigArgsParser(utils.read_config_yaml(config_path), args)
     config_args.printFormatted()
     config = config_args.asNamespace()
 
     sigma = torch.tensor([config.sigma], device=DEVICE)
-    global_scene = mi.load_file(os.path.join(args.scene_path, "scene.xml"))
+    global_scene = mi.load_file(os.path.join(scene_path, "scene.xml"))
     global_params = mi.traverse(global_scene)
 
     if hasattr(config, "downscale_factor"):
@@ -102,7 +109,7 @@ def main():
 
     firefly_scene = Firefly.Scene(
         global_params,
-        args.scene_path,
+        scene_path,
         sequential_animation=config.sequential,
         steps_per_frame=config.steps_per_anim,
         device=DEVICE,
@@ -156,18 +163,19 @@ def main():
     }
     model = UNetWithMultiInput.Model(config=UNET_CONFIG, device=DEVICE).to(DEVICE)
 
-    state_dict = torch.load(os.path.join(save_path, "model.pth.tar"))
+    state_dict = torch.load(os.path.join(checkpoint_path, "model.pth.tar"))
     model.load_from_dict(state_dict)
     Laser._rays = state_dict["laser_rays"]
 
     rmse = EvaluationCriterion(RSME)
     mae = EvaluationCriterion(MAE)
 
-    printer.Printer.Header(f"Beginning evaluation of scene {args.scene_path}")
+    printer.Printer.Header(f"Beginning evaluation of scene {scene_path}")
+    printer.Printer.Header(f"Checkpoint: {checkpoint_path}")
     printer.Printer.OKB(f"Number of laser beams: {Laser._rays.shape[0]}")
 
     model.eval()
-    for i in (progress_bar := tqdm(range(config.eval_steps))):
+    for _ in tqdm(range(config.eval_steps)):
         firefly_scene.randomize()
         # segmentation = depth.get_segmentation_from_camera(global_scene).float()
 
@@ -177,8 +185,6 @@ def main():
         texture_init = kornia.filters.gaussian_blur2d(
             texture_init.unsqueeze(0).unsqueeze(0), (5, 5), (3, 3)
         ).squeeze()
-
-        # cv2.imshow("Seg", segmentation.detach().cpu().numpy().astype(np.uint8) * 255)
 
         hitpoints = cast_laser(Laser.originPerRay(), Laser.rays())
 
@@ -210,12 +216,37 @@ def main():
         model_input = [multi_res.unsqueeze(0) for multi_res in multi_res_depth]
         pred_depth = model(model_input)
 
-        rmse.eval(pred_depth, dense_depth)
-        mae.eval(pred_depth, dense_depth)
+        rmse.eval(pred_depth.squeeze(), dense_depth)
+        mae.eval(pred_depth.squeeze(), dense_depth)
 
     print(rmse)
     print(mae)
 
 
 if __name__ == "__main__":
+
     main()
+    exit()
+
+    scene_path = "scenes/Vocalfold/"
+
+    eval_pathes = [
+        "2024-02-29-18:56:25_POISSON_15000_10",
+        "2024-02-29-19:08:59_POISSON_15000_20",
+        "2024-02-29-19:20:45_POISSON_15000_30",
+        "2024-02-29-19:31:42_POISSON_15000_40",
+        "2024-02-29-19:42:25_POISSON_15000_50",
+        "2024-02-29-19:53:15_POISSON_15000_60",
+        "2024-02-29-20:04:03_POISSON_15000_70",
+        "2024-02-29-20:15:01_POISSON_15000_80",
+        "2024-02-29-20:26:04_POISSON_15000_90",
+        "2024-02-29-20:37:05_POISSON_15000_100",
+        "2024-02-29-20:48:13_POISSON_15000_125",
+        "2024-02-29-20:59:24_POISSON_15000_150",
+        "2024-02-29-21:10:44_POISSON_15000_175",
+        "2024-02-29-21:22:28_POISSON_15000_200",
+    ]
+
+    for path in eval_pathes:
+        checkpoint_path = os.path.join(scene_path, "optim", path)
+        main(scene_path, checkpoint_path)
