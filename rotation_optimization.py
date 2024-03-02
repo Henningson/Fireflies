@@ -256,8 +256,6 @@ def main(resume: bool = False, save_path: str = None):
         if i == config.warmup_iterations:
             optim.param_groups[1]["lr"] = config.lr_laser
 
-        start_time = time.time()
-
         firefly_scene.randomize()
 
         # Generate depth image and look for peak of our Gaussian Blob
@@ -439,11 +437,6 @@ def main(resume: bool = False, save_path: str = None):
                         os.path.join(optim_path, image_string),
                         (render_im * 255).astype(np.uint8),
                     )
-
-        if not DEBUG and time.time() - start_time > 0.5:
-            resume = True
-            print("Restarting.")
-            break
 
     printer.Printer.OKG("Saving")
     checkpoint = {
