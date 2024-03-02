@@ -114,6 +114,7 @@ def main(scene_path: str = None, checkpoint_path: str = None):
         steps_per_frame=config.steps_per_anim,
         device=DEVICE,
     )
+    firefly_scene.eval()
     firefly_scene.randomize()
 
     camera_sensor = global_scene.sensors()[0]

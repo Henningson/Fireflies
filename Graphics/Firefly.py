@@ -52,6 +52,26 @@ class Scene:
 
         self.initScene()
 
+    def train(self) -> None:
+        # Set all objects to train mode
+        for transformable in self._parent_transformables:
+            transformable.train()
+
+            iterator_child = transformable.child()
+            while iterator_child is not None:
+                iterator_child.train()
+                iterator_child = iterator_child.child()
+
+    def eval(self) -> None:
+        # Set all objects to eval mode
+        for transformable in self._parent_transformables:
+            transformable.eval()
+
+            iterator_child = transformable.child()
+            while iterator_child is not None:
+                iterator_child.eval()
+                iterator_child = iterator_child.child()
+
     def getMitsubaXML(self, path):
         data = None
         with open(path, "r") as f:
@@ -272,7 +292,7 @@ if __name__ == "__main__":
     import rasterization
     from argparse import Namespace
 
-    base_path = "scenes/RealColon/"
+    base_path = "scenes/Vocalfold/"
 
     config = utils.read_config_yaml(os.path.join(base_path, "config.yml"))
     config = Namespace(**config)
@@ -290,6 +310,7 @@ if __name__ == "__main__":
     texture_size = torch.tensor(mitsuba_scene.sensors()[1].film().size(), device="cuda")
 
     firefly_scene = Scene(mitsuba_params, base_path, sequential_animation=True)
+    firefly_scene.eval()
     firefly_scene.randomize()
 
     laser_init = LaserEstimation.initialize_laser(
@@ -338,7 +359,7 @@ if __name__ == "__main__":
     for i in tqdm(range(100000)):
         firefly_scene.randomize()
 
-        render_im = mi.render(mitsuba_scene, spp=50)
+        render_im = mi.render(mitsuba_scene, spp=10)
         render_im = torch.clamp(render_im.torch(), 0, 1)[:, :, [2, 1, 0]].cpu().numpy()
         cv2.imshow("Render", render_im)
         cv2.waitKey(0)

@@ -34,6 +34,17 @@ class GlobalArgumentParser(argparse.ArgumentParser):
             help="The number of depth maps to generate. Should rise with the complexity of the scene",
         )
         self.add_argument(
+            "--smarty_min_radius",
+            type=float,
+            help="Minimal size of sigma for the SMARTY initialization",
+        )
+        self.add_argument(
+            "--smarty_max_radius",
+            type=float,
+            help="Maximal size of sigma for the SMARTY initialization",
+        )
+
+        self.add_argument(
             "--variational_epsilon",
             type=float,
             help="Add this as a constant value to the initial sampling map to also sample from positions that do not vary in depth.",

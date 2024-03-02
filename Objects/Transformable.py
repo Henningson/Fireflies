@@ -22,7 +22,10 @@ import transforms
 
 class Transformable:
     def __init__(
-        self, name: str, config: dict, device: torch.cuda.device = torch.device("cuda")
+        self,
+        name: str,
+        config: dict,
+        device: torch.cuda.device = torch.device("cuda"),
     ):
 
         self._device = device
@@ -39,6 +42,7 @@ class Transformable:
         # Is loaded in a second step
         self._parent = None
         self._child = None
+        self._train = True
 
     def parent(self):
         return self._parent
@@ -48,6 +52,12 @@ class Transformable:
 
     def name(self):
         return self._name
+
+    def train(self) -> None:
+        self._train = True
+
+    def eval(self) -> None:
+        self._train = False
 
     def parentName(self) -> str:
         return self._parent_name
@@ -108,7 +118,6 @@ class Transformable:
         self._randomized_world = (
             self.sampleTranslation() @ self.sampleRotation() @ self._world
         )
-        pass
 
     def relative(self) -> None:
         return self._relative
@@ -143,13 +152,23 @@ class Curve(Transformable):
 
         self._curve = curve
         self._curve.ctrlpts = self.convertToLocal(self._curve.ctrlpts)
-        self.curve_count_epsilon = 0.0
+        self.curve_epsilon = 0.05
 
-        Curve.count = self.curve_count_epsilon
+        self.curve_delta = self.curve_epsilon
 
-        self._continuous = True
-        self._interp_steps = 300
+        self._interp_steps = 1000
         self._interp_delta = 1.0 / self._interp_steps
+
+        self.eval_interval_start = 0.85
+
+    def train(self) -> None:
+        self._train = True
+        self._continuous = False
+
+    def eval(self) -> None:
+        self._train = False
+        self._continuous = True
+        self._curve_delta = self.eval_interval_start
 
     def convertToLocal(self, controlpoints: List[List[float]]) -> List[List[float]]:
         return controlpoints
@@ -158,8 +177,8 @@ class Curve(Transformable):
         self._continuous = continuous
 
     def sampleRotation(self) -> torch.tensor:
-        t = Curve.count
-        t_new = Curve.count + 0.001
+        t = self.curve_delta
+        t_new = self.curve_delta + 0.001
 
         t_new = torch.tensor(self._curve.evaluate_single(t_new), device=self._device)
         t = torch.tensor(self._curve.evaluate_single(t), device=self._device)
@@ -181,17 +200,7 @@ class Curve(Transformable):
 
     def sampleTranslation(self) -> torch.tensor:
         translationMatrix = torch.eye(4, device=self._device)
-        random_translation = random.uniform(0, 1)
-
-        if self._continuous:
-            Curve.count += self._interp_delta
-            if Curve.count > 1.0 - self.curve_count_epsilon:
-                Curve.count = self.curve_count_epsilon
-
-            random_translation = Curve.count
-        # Curve.count = 0.0
-
-        translation = self._curve.evaluate_single(random_translation)
+        translation = self._curve.evaluate_single(self.curve_delta)
 
         translationMatrix[0, 3] = -translation[0]
         translationMatrix[1, 3] = translation[1]
@@ -200,10 +209,19 @@ class Curve(Transformable):
         return translationMatrix
 
     def randomize(self) -> None:
+        if self._train:
+            self.curve_delta = random.uniform(
+                0 + self.curve_epsilon, self.eval_interval_start
+            )
+        else:
+            self.curve_delta += self._interp_delta
+
+            if self.curve_delta > 1.0 - self.curve_epsilon:
+                self.curve_delta = self.eval_interval_start
+
         self._randomized_world = (
             self.sampleTranslation() @ self.sampleRotation() @ self._world
         )
-        pass
 
 
 class Mesh(Transformable):
@@ -217,18 +235,29 @@ class Mesh(Transformable):
         sequential_animation: bool = True,
     ):
         Transformable.__init__(self, name, config, device)
+        self._base_path = base_path
 
         self.setVertices(vertex_data)
         self.setScaleBoundaries(config["scale"])
+
         self._animated = bool(config["animated"])
         self._sequential_animation = sequential_animation
-
-        if self._animated:
-            self._animation_index = 0
-            self.loadAnimation(base_path, name)
+        self._animation_index = 0
 
     def animated(self) -> bool:
         return self._animated
+
+    def train(self) -> None:
+        Transformable.train(self)
+
+        if self._animated:
+            self.loadAnimation(self._base_path, self._name)
+
+    def eval(self) -> None:
+        Transformable.eval(self)
+        if self._animated:
+            eval_path = f"{self._name}_eval"
+            self.loadAnimation(self._base_path, eval_path)
 
     def convertToLocal(self, vertices: torch.tensor) -> List[List[float]]:
         vertices = transforms.transform_points(
@@ -360,6 +389,7 @@ class ShapeModel(Mesh):
         self._stddev_range = config["stddev_range"]
         self._shape_layer = None
         self._model_params = {}
+        self._train = True
 
     def loadAnimation(self):
         return None

@@ -166,6 +166,7 @@ def main(resume: bool = False, save_path: str = None):
         steps_per_frame=config.steps_per_anim,
         device=DEVICE,
     )
+    firefly_scene.train()
     firefly_scene.randomize()
 
     camera_sensor = global_scene.sensors()[0]

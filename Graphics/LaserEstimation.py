@@ -333,8 +333,8 @@ def initialize_laser(
 
         # sample points for laser rays
 
-        min_radius = config.sigma / 2
-        max_radius = 7 * min_radius
+        min_radius = config.smarty_min_radius
+        max_radius = config.smarty_max_radius
         normalized_sampling = 1 - utils.normalize(final_sampling_map)
         normalized_sampling = (
             min_radius + (max_radius - min_radius) * normalized_sampling
