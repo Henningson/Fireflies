@@ -159,7 +159,7 @@ class Curve(Transformable):
         self._interp_steps = 1000
         self._interp_delta = 1.0 / self._interp_steps
 
-        self.eval_interval_start = 0.85
+        self.eval_interval_start = 0.90
 
     def train(self) -> None:
         self._train = True
@@ -319,7 +319,6 @@ class Mesh(Transformable):
         for file in sorted(os.listdir(os.path.join(base_path, obj_name + "/"))):
             if file.endswith(".obj"):
                 obj_path = os.path.join(base_path, obj_name, file)
-                print(os.path.join(base_path, obj_name, file))
 
                 obj = pywavefront.Wavefront(obj_path, collect_faces=True)
 

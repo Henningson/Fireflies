@@ -5,7 +5,6 @@ from typing import List
 import yaml
 from pathlib import Path
 from geomdl import NURBS
-from geomdl.visualization import VisMPL
 
 
 def read_config_yaml(file_path: str) -> dict:

@@ -76,7 +76,7 @@ def from_camera_non_wrapped(scene, spp=64):
         mi.Float(pos % int(film_size[0])), mi.Float(pos // int(film_size[0]))
     )
 
-    pos += sampler.next_2d()
+    # pos += sampler.next_2d()
 
     # Sample rays starting from the camera sensor
     rays, weights = sensor.sample_ray(
@@ -188,12 +188,12 @@ def random_depth_maps(
 
         depth_map = from_camera_non_wrapped(mi_scene, spp=1)
 
-        vis_depth = torch.log(depth_map.torch().reshape(im_size[1], im_size[0]).clone())
-        vis_depth = utils.normalize(vis_depth)
-        vis_depth = ((1 - vis_depth.detach().cpu().numpy()) * 255).astype(np.uint8)
-        colored = cv2.applyColorMap(vis_depth, cv2.COLORMAP_INFERNO)
-        cv2.imshow("Depth", colored)
-        cv2.waitKey(1)
+        # vis_depth = torch.log(depth_map.torch().reshape(im_size[1], im_size[0]).clone())
+        # vis_depth = utils.normalize(vis_depth)
+        # vis_depth = ((1 - vis_depth.detach().cpu().numpy()) * 255).astype(np.uint8)
+        # colored = cv2.applyColorMap(vis_depth, cv2.COLORMAP_INFERNO)
+        # cv2.imshow("Depth", colored)
+        # cv2.waitKey(1)
 
         depth_map = depth_map.torch().reshape(im_size[1], im_size[0], spp).mean(dim=-1)
         stacked_depth_maps.append(depth_map)

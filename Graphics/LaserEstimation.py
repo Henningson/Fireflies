@@ -251,8 +251,8 @@ def generate_epipolar_constraints(scene, params, device):
 
     image = np.zeros(camera_size[[1, 0]], dtype=np.uint8)
     image = cv2.fillPoly(image, [epi_points_np.astype(int)], color=1)
-    cv2.imshow("Epipolar Image", image * 255)
-    cv2.waitKey(0)
+    # cv2.imshow("Epipolar Image", image * 255)
+    # cv2.waitKey(0)
 
     return torch.from_numpy(image).to(device)
 
@@ -320,8 +320,9 @@ def initialize_laser(
         variance_map = utils.normalize(variance_map)
         vm = (variance_map.cpu().numpy() * 255).astype(np.uint8)
         vm = cv2.applyColorMap(vm, cv2.COLORMAP_INFERNO)
-        cv2.imshow("Variance Map", vm)
-        cv2.waitKey(0)
+
+        # cv2.imshow("Variance Map", vm)
+        # cv2.waitKey(0)
 
         # Final multiplication and normalization
         final_sampling_map = variance_map  # * constraint_map
@@ -350,13 +351,15 @@ def initialize_laser(
         vm = variance_map.cpu().numpy()
         cp = chosen_points.cpu().numpy()
         cm = constraint_map.cpu().numpy()
+        """
         if config.save_images:
             vm = (vm * 255).astype(np.uint8)
-            vm = cv2.applyColorMap(vm, cv2.COLORMAP_VIRIDIS)
+            vm = cv2.applyColorMap(vm, cv2.COLORMAP_INFERNO)
             vm.reshape(-1, 3)[cp, :] = ~vm.reshape(-1, 3)[cp, :]
             cv2.imwrite("sampling_map.png", vm)
             cm = cm * 255
             cv2.imwrite("constraint_map.png", cm)
+        """
 
         laser_world = firefly_scene.projector.world()
         laser_origin = laser_world[0:3, 3]

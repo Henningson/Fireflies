@@ -1,6 +1,8 @@
 from typing import List
 from enum import Enum
 import torch
+import csv
+import os
 
 from torchmetrics.image import PeakSignalNoiseRatio
 
@@ -37,7 +39,18 @@ class EvaluationCriterion:
         return self._total_error / self._num_evals
 
     def __str__(self) -> str:
-        return f"{self._eval_func.__name__}, Total Error: {self.getTotalError()}, Normalized Error: {self.getNormalizedError()}"
+        return f"{self._eval_func.__name__}, Total Error: {self.getTotalError():.5f}, Normalized Error: {self.getNormalizedError():.5f}"
+
+    def reset(self) -> None:
+        self.errors = []
+        self.total_error = 0.0
+        self.num_evals = 0
+
+    def save(self, path, iter) -> None:
+        fullpath = os.path.join(path, f"{self._eval_func.__name__}.csv")
+        with open(fullpath, "w+", newline="") as file:
+            writer = csv.writer(file)
+            writer.writerow([iter, self.getTotalError(), self.getNormalizedError()])
 
 
 class ImageCriterion(EvaluationCriterion):
