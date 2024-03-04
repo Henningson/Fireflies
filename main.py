@@ -100,19 +100,11 @@ def vis_schmexy_depth(ndc_points, depth_image):
     cv2.waitKey(0)
 
 
-def main():
+def main(config, args):
     global firefly_scene
     global global_scene
     global global_params
     global global_key
-
-    parser = Args.GlobalArgumentParser()
-    args = parser.parse_args()
-
-    config_path = os.path.join(args.scene_path, "config.yml")
-    config_args = CAP.ConfigArgsParser(utils.read_config_yaml(config_path), args)
-    config_args.printFormatted()
-    config = config_args.asNamespace()
 
     sigma = torch.tensor([config.sigma], device=DEVICE)
     global_scene = mi.load_file(os.path.join(args.scene_path, "scene.xml"))
@@ -290,6 +282,140 @@ def main():
     save_checkpoint(model, optim, Laser, i, losses, save_path)
 
 
+def evaluate(config, args):
+    global firefly_scene
+    global global_scene
+    global global_params
+    global global_key
+
+    sigma = torch.tensor([config.sigma], device=DEVICE)
+    global_scene = mi.load_file(os.path.join(args.scene_path, "scene.xml"))
+    global_params = mi.traverse(global_scene)
+
+    render_path = os.path.join(args.checkpoint_path, "render")
+    gt_render_path = os.path.join(render_path, "gt")
+    pred_render_path = os.path.join(render_path, "pred")
+
+    if config.save_images:
+        try:
+            os.mkdir(render_path)
+        except:
+            printer.Printer.Warning(f"Folder {render_path} does already exist.")
+
+        try:
+            os.mkdir(gt_render_path)
+        except:
+            printer.Printer.Warning(f"Folder {gt_render_path} does already exist.")
+
+        try:
+            os.mkdir(pred_render_path)
+        except:
+            printer.Printer.Warning(f"Folder {pred_render_path} does already exist.")
+
+    if hasattr(config, "downscale_factor"):
+        global_params["PerspectiveCamera.film.size"] = (
+            global_params["PerspectiveCamera.film.size"] // config.downscale_factor
+        )
+        global_params["PerspectiveCamera_1.film.size"] = (
+            global_params["PerspectiveCamera_1.film.size"] // config.downscale_factor
+        )
+
+    global_params["Projector.to_world"] = global_params["PerspectiveCamera_1.to_world"]
+    global_params.update()
+    global_key = "tex.data"
+
+    firefly_scene = Firefly.Scene(
+        global_params,
+        args.scene_path,
+        sequential_animation=config.sequential,
+        steps_per_frame=config.steps_per_anim,
+        device=DEVICE,
+    )
+    firefly_scene.eval()
+    firefly_scene.randomize()
+
+    camera_sensor = global_scene.sensors()[0]
+    camera_x_fov = global_params["PerspectiveCamera.x_fov"]
+    camera_near_clip = global_params["PerspectiveCamera.near_clip"]
+    camera_far_clip = global_params["PerspectiveCamera.far_clip"]
+
+    projector_sensor = global_scene.sensors()[0]
+    projector_x_fov = global_params["PerspectiveCamera_1.x_fov"]
+    projector_near_clip = global_params["PerspectiveCamera_1.near_clip"]
+    projector_far_clip = global_params["PerspectiveCamera_1.far_clip"]
+
+    K_CAMERA = mi.perspective_projection(
+        camera_sensor.film().size(),
+        camera_sensor.film().crop_size(),
+        camera_sensor.film().crop_offset(),
+        camera_x_fov,
+        camera_near_clip,
+        camera_far_clip,
+    ).matrix.torch()[0]
+    K_PROJECTOR = mi.perspective_projection(
+        projector_sensor.film().size(),
+        projector_sensor.film().crop_size(),
+        projector_sensor.film().crop_offset(),
+        projector_x_fov,
+        projector_near_clip,
+        projector_far_clip,
+    ).matrix.torch()[0]
+
+    # Build laser from Projector constraints
+    tex_size = torch.tensor(global_scene.sensors()[1].film().size(), device=DEVICE)
+
+    Laser = LaserEstimation.initialize_laser(
+        global_scene,
+        global_params,
+        firefly_scene,
+        config,
+        config.pattern_initialization,
+        DEVICE,
+    )
+
+    # Init U-Net and params
+    UNET_CONFIG = {
+        "in_channels": 1,
+        "out_channels": 1,
+        "features": [32, 64, 128],
+    }
+    model = UNetWithMultiInput.Model(config=UNET_CONFIG, device=DEVICE).to(DEVICE)
+
+    state_dict = torch.load(os.path.join(args.checkpoint_path, "model_02499.pth.tar"))
+    model.load_from_dict(state_dict)
+    Laser._rays = state_dict["laser_rays"]
+    num_beams = Laser._rays.shape[0]
+
+    rmse = EvaluationCriterion(RSME)
+    mae = EvaluationCriterion(MAE)
+    metrics = [rmse, mae]
+
+    printer.Printer.Header(f"Beginning evaluation of scene {args.scene_path}")
+    printer.Printer.Header(f"Checkpoint: {args.checkpoint_path}")
+    printer.Printer.OKB(f"Number of laser beams: {num_beams}")
+
+    for i in tqdm(range(config.eval_iter_final)):
+        firefly_scene.randomize()
+        pred_depth, gt_depth, _ = inference(model, sigma, tex_size, Laser, K_CAMERA)
+
+        for metric in metrics:
+            metric.eval(pred_depth.squeeze(), gt_depth)
+
+        render, pred, gt, tex = get_visualization(
+            model, config, tex_size, Laser, K_CAMERA
+        )
+
+        if config.visualize:
+            visualize(render, pred, gt, tex, waitKey=1)
+
+        if config.save_images:
+            save_image(gt, gt_render_path, i)
+            save_image(pred, pred_render_path, i)
+
+    for metric in metrics:
+        print(metric)
+
+
 def save_checkpoint(model, optim, Laser, iter, losses, save_path):
     checkpoint = {
         "optimizer": optim.state_dict(),
@@ -361,6 +487,11 @@ def get_visualization(model, config, tex_size, Laser, camera_intrinsic):
     return rendering, pred_depth, gt_depth, texture
 
 
+def save_image(image, save_path, iter):
+    imwrite_path = os.path.join(save_path, f"{iter:05d}.png")
+    cv2.imwrite(imwrite_path, image)
+
+
 def save_images(render, pred_depth, gt_depth, texture, save_path, iter):
     render_path = os.path.join(save_path, f"render_{iter:05d}.png")
     pred_path = os.path.join(save_path, f"pred_{iter:05d}.png")
@@ -373,12 +504,12 @@ def save_images(render, pred_depth, gt_depth, texture, save_path, iter):
     cv2.imwrite(texture_path, texture)
 
 
-def visualize(render, pred_depth, gt_depth, texture):
+def visualize(render, pred_depth, gt_depth, texture, waitKey=1):
 
     concat_im = np.hstack([render, texture, pred_depth, gt_depth])
 
     cv2.imshow("Predicted Depth Map", concat_im)
-    cv2.waitKey(1)
+    cv2.waitKey(waitKey)
 
 
 def train(
@@ -460,8 +591,15 @@ def eval(model, config, Laser, sigma, tex_size, camera_intrinsic, metrics, iters
 
 
 if __name__ == "__main__":
-    main()
+    parser = Args.GlobalArgumentParser()
+    args = parser.parse_args()
 
-    """
- python main.py --scene_path "scenes/Vocalfold" --pattern_initialization "GRID" --n_beams 81;python main.py --scene_path "scenes/Vocalfold" --pattern_initialization "GRID" --n_beams 100;python main.py --scene_path "scenes/Vocalfold" --pattern_initialization "GRID" --n_beams 121;python main.py --scene_path "scenes/Vocalfold" --pattern_initialization "GRID" --n_beams 144;python main.py --scene_path "scenes/Vocalfold" --pattern_initialization "GRID" --n_beams 169;python main.py --scene_path "scenes/Vocalfold" --pattern_initialization "GRID" --n_beams 225;python main.py --scene_path "scenes/Vocalfold" --pattern_initialization "GRID" --n_beams 256;python main.py --scene_path "scenes/Vocalfold" --pattern_initialization "GRID" --n_beams 289;python main.py --scene_path "scenes/Vocalfold" --pattern_initialization "GRID" --n_beams 324; 
-    """
+    config_path = os.path.join(args.scene_path, "config.yml")
+    config_args = CAP.ConfigArgsParser(utils.read_config_yaml(config_path), args)
+    config_args.printFormatted()
+    config = config_args.asNamespace()
+
+    if args.eval:
+        evaluate(config, args)
+    else:
+        main(config, args)

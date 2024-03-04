@@ -57,6 +57,24 @@ def get_min_and_index(value_list: List[float]) -> Tuple[int, float]:
     return value_list.index(minimum), minimum
 
 
+def get_mean_and_std_of_all(scene_path, folders) -> None:
+    maes_total = []
+    rsmes_total = []
+
+    for folder in folders:
+        folder_base_path = os.path.join(scene_path, "optim", folder)
+        _, maes, rmses, _ = find_and_load_errors(folder_base_path)
+
+        rsmes_total += rmses
+        maes_total += maes
+
+    rsmes_total = np.array(rsmes_total)
+    maes_total = np.array(maes_total)
+
+    print(f"_RMSE_ Mean: {rsmes_total.mean():.5f}, STD: {rsmes_total.std():.5f}")
+    print(f"_MAE_  Mean: {maes_total.mean():.5f}, STD: {maes_total.std():.5f}")
+
+
 def find_best_performing_networks(scene_path, folders) -> None:
     for folder in folders:
         folder_base_path = os.path.join(scene_path, "optim", folder)
@@ -97,10 +115,15 @@ if __name__ == "__main__":
     realcolon_base_path = "scenes/RealColon"
 
     folders = [
-        "POISSON_LR",
-        "RANDOM_LR",
-        "GRID_LR",
-        "SMARTY_LR",
+        "POISSON_2500",
+        "RANDOM_2500",
+        "GRID_2500",
+        "SMARTY_2500",
     ]
-    find_best_performing_networks(vocalfold_base_path, folders)
-    generate_performance_plot(vocalfold_base_path, folders)
+
+    lr_folders = ["POISSON_2500_LR", "RANDOM_2500_LR", "GRID_2500_LR", "SMARTY_2500_LR"]
+
+    get_mean_and_std_of_all(vocalfold_base_path, folders)
+    get_mean_and_std_of_all(vocalfold_base_path, lr_folders)
+    find_best_performing_networks(vocalfold_base_path, folders + lr_folders)
+    generate_performance_plot(vocalfold_base_path, folders + lr_folders)

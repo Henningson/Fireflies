@@ -3,6 +3,8 @@ import torch
 import torch.nn.functional as F
 import math
 
+random.seed(0)
+
 
 def uniformBetweenValues(a: float, b: float):
     return random.uniform(a, b)

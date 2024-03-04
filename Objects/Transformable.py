@@ -159,7 +159,7 @@ class Curve(Transformable):
         self._interp_steps = 1000
         self._interp_delta = 1.0 / self._interp_steps
 
-        self.eval_interval_start = 0.90
+        self.eval_interval_start = 0.9
 
     def train(self) -> None:
         self._train = True
@@ -249,12 +249,14 @@ class Mesh(Transformable):
 
     def train(self) -> None:
         Transformable.train(self)
+        self._sequential_animation = False
 
         if self._animated:
             self.loadAnimation(self._base_path, self._name)
 
     def eval(self) -> None:
         Transformable.eval(self)
+        self._sequential_animation = True
         if self._animated:
             eval_path = f"{self._name}_eval"
             self.loadAnimation(self._base_path, eval_path)
