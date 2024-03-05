@@ -5,7 +5,7 @@ import csv
 import os
 
 from torchmetrics.image import PeakSignalNoiseRatio
-
+from pytorch3d.loss import chamfer_distance
 
 def RSME(x, y):
     mse_loss = torch.nn.MSELoss(reduction="mean")
@@ -15,6 +15,10 @@ def RSME(x, y):
 def MAE(x, y):
     l1_loss = torch.nn.L1Loss(reduction="mean")
     return l1_loss(x, y)
+
+def CHAMFER(x, y):
+    return chamfer_distance(x, y)
+
 
 
 class EvaluationCriterion:
