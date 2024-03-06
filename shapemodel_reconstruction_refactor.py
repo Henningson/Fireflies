@@ -75,7 +75,7 @@ from pytorch3d.utils import ico_sphere
 import numpy as np
 from tqdm import tqdm
 from pytorch3d.io import load_objs_as_meshes, save_obj
-from Metrics.evaluation import RSME, MAE, EvaluationCriterion
+from Metrics.evaluation import RSME, MAE, EvaluationCriterion, CHAMFER
 
 from pytorch3d.structures import Meshes
 
@@ -379,7 +379,7 @@ def get_rand_params(batch_size: int, num_params: int, stddev: float = 2.0):
     return ((torch.rand(batch_size, num_params) - 0.5) * 2.0) * stddev
 
 
-def generate_training_sample(shapemodel, textures, config, renderer, cameras, lights):
+def generate_sample(shapemodel, textures, config, renderer, cameras, lights):
     with torch.no_grad():
         vertices, _ = shapemodel.getVertexData()
         vertices = vertices.unsqueeze(0)
@@ -407,7 +407,9 @@ def visualize(segmentation):
         cv2.waitKey(1)
 
 
-def inference(model, shapemodel, sensor_size, Laser, intrinsic, segmentation):
+def inference(
+    config, model, shapemodel, textures, sensor_size, Laser, intrinsic, segmentation
+):
     hit_d = cast_laser(Laser.originPerRay(), Laser.rays())
     world_points = Laser.originPerRay() + Laser.rays() * hit_d
 
@@ -446,7 +448,12 @@ def inference(model, shapemodel, sensor_size, Laser, intrinsic, segmentation):
         shapemodel.poseParams(),
     )
 
-    return pred_vertices, pred_shape_params, hits_ndc, non_hits_ndc
+    pred_vertices = toMinusOneOne(toUnitCube(pred_vertices))
+    pred_mesh = Meshes(
+        pred_vertices, shapemodel._shape_layer.faces_tensor.unsqueeze(0), textures
+    ).extend(config.num_views)
+
+    return pred_mesh, pred_shape_params, hits_ndc, non_hits_ndc
 
 
 def train(
@@ -466,15 +473,21 @@ def train(
 ):
     shapemodel = firefly_scene.meshes[shapemodel_key]
     firefly_scene.randomize()
-    optim.zero_grad()
     loss_func = torch.nn.MSELoss()
 
     for i in range(config.gradient_accumulation_steps):
-        mesh, target_rgb, target_silhouette, segmentation = generate_training_sample(
+        mesh, target_rgb, target_silhouette, segmentation = generate_sample(
             shapemodel, textures, config, gt_renderer, cameras, lights
         )
-        pred_vertices, pred_shape_params, ndc_hits, ndc_non_hits = inference(
-            model, shapemodel, sensor_size, Laser, intrinsic, segmentation
+        pred_mesh, _, ndc_hits, ndc_non_hits = inference(
+            config,
+            model,
+            shapemodel,
+            textures,
+            sensor_size,
+            Laser,
+            intrinsic,
+            segmentation,
         )
         ndc_points = ndc_hits
 
@@ -483,25 +496,19 @@ def train(
         )
         ndc_tex = rasterization.softor(ndc_raster)
 
-        pred_vertices = toMinusOneOne(toUnitCube(pred_vertices))
-        pred_mesh = Meshes(
-            pred_vertices, shapemodel._shape_layer.faces_tensor.unsqueeze(0), textures
-        ).extend(config.num_views)
-
         # Losses to smooth /regularize the mesh shape
         loss = {k: torch.tensor(0.0, device=DEVICE) for k in losses}
         images_predicted = diff_renderer(pred_mesh, cameras=cameras, lights=lights)
-
         loss_silhouette = loss_func(images_predicted[..., 3], target_silhouette)
-        loss["silhouette"] += loss_silhouette / config.num_views_per_iteration
-
         loss_rgb = loss_func(images_predicted[..., :3], target_rgb)
-        loss["rgb"] += loss_rgb / config.num_views_per_iteration
-
         loss_seg = loss_func(segmentation, ndc_tex)
-        loss["scene_seg"] += loss_seg
+        loss_verts = chamfer_distance(
+            mesh.verts_padded(), pred_mesh.verts_padded()[:1]
+        )[0]
 
-        loss_verts = chamfer_distance(mesh.verts_padded(), pred_vertices)[0]
+        loss["rgb"] += loss_rgb / config.num_views
+        loss["silhouette"] += loss_silhouette / config.num_views
+        loss["scene_seg"] += loss_seg
         loss["chamf"] += loss_verts
 
         # Weighted sum of the losses
@@ -515,15 +522,13 @@ def train(
         sum_loss = sum_loss / config.gradient_accumulation_steps
         sum_loss.backward()
 
-        # Gradient Accumulation
-        if i > 0 and i % config.gradient_accumulation_steps == 0:
-            optim.step()
-            optim.zero_grad()
+    optim.step()
+    optim.zero_grad()
+    scheduler.step()
 
     with torch.no_grad():
         Laser.clamp_to_fov()
         Laser.normalize_rays()
-        scheduler.step()
 
     return sum_loss.item()
 
@@ -536,9 +541,10 @@ def main(config, args):
     global firefly_scene
 
     NUM_SHAPE_PARAMS = 100
-    config.batch_size = config.num_views_per_iteration
-    sigma = torch.tensor([config.sigma], device=DEVICE)
-    global_scene = mi.load_file(os.path.join(args.scene_path, "scene.xml"))
+    sigma = torch.tensor([config.sigma], device=DEVICE) ** 2
+    global_scene = mi.load_file(
+        os.path.join(args.scene_path, "scene.xml"), parallel=False
+    )
     global_params = mi.traverse(global_scene)
 
     save_base = os.path.join(args.scene_path, "optim")
@@ -592,9 +598,9 @@ def main(config, args):
     )
     firefly_scene.randomize()
 
-    for key, value in firefly_scene.meshes.items():
-        if isinstance(value, Transformable.ShapeModel):
-            shapemodel_key = key
+    # for key, value in firefly_scene.meshes.items():
+    #    if isinstance(value, Transformable.FlameShapeModel):
+    shapemodel_key = "PLYMesh"
 
     camera_sensor = global_scene.sensors()[0]
     camera_x_fov = global_params["PerspectiveCamera.x_fov"]
@@ -643,9 +649,16 @@ def main(config, args):
         optim, step_size=config.scheduler_step_at, gamma=0.5
     )
     # Hacky magic number here. But we want a better L2 Loss
-    vertex_color = torch.randn(1, 5023, 3).to(DEVICE)
+    vertex_color = torch.ones(1, 5023, 3).to(DEVICE) * 0.5
     textures = Textures(verts_rgb=vertex_color)
-    metrics = [EvaluationCriterion(RSME), EvaluationCriterion(MAE)]
+    metrics_rgb = [EvaluationCriterion(RSME), EvaluationCriterion(MAE)]
+    metrics_silhouette = [EvaluationCriterion(RSME), EvaluationCriterion(MAE)]
+    metrics_vertices = [
+        EvaluationCriterion(RSME),
+        EvaluationCriterion(MAE),
+        EvaluationCriterion(CHAMFER),
+    ]
+    metrics_shape_params = [EvaluationCriterion(RSME), EvaluationCriterion(MAE)]
     sensor_size = torch.tensor(global_scene.sensors()[0].film().size(), device=DEVICE)
 
     losses = {
@@ -689,12 +702,18 @@ def main(config, args):
                     config,
                     Laser,
                     K_CAMERA,
-                    metrics,
+                    gt_renderer,
+                    diff_renderer,
+                    textures,
+                    cameras,
+                    lights,
+                    metrics_rgb,
+                    metrics_silhouette,
+                    metrics_vertices,
+                    metrics_shape_params,
                     eval_iterations,
+                    save_path,
                 )
-
-                for metric in metrics:
-                    metric.save(save_path, i)
 
                 gt_render, pred_render = get_visualization(
                     model, config, Laser, K_CAMERA
@@ -710,15 +729,24 @@ def main(config, args):
                 firefly_scene.train()
 
             if not config.save_images and i == config.iterations - 1:
-                render, pred, gt, tex = get_visualization(
+                gt_rgb, gt_sil, pred_rgb, pred_sil = get_visualization(
                     model, config, sensor_size, Laser, K_CAMERA
                 )
-                save_images(render, pred, gt, tex, save_path, i)
+                save_images(gt_rgb, gt_sil, pred_rgb, pred_sil, save_path, i)
 
     save_checkpoint(model, optim, Laser, i, losses, save_path)
 
-    for metric in metrics:
-        print(metrics)
+    for metric in metrics_rgb:
+        print(metric)
+
+    for metric in metrics_silhouette:
+        print(metric)
+
+    for metric in metrics_vertices:
+        print(metric)
+
+    for metric in metrics_shape_params:
+        print(metric)
 
     if config.visualize:
         plot_losses(losses)
@@ -729,23 +757,105 @@ def main(config, args):
     print("Finished everything.")
 
 
-def eval(model, config, Laser, K_CAMERA, metrics, eval_iterations):
-    pass
+def evaluate(
+    model,
+    config,
+    Laser,
+    intrinsic,
+    gt_renderer,
+    diff_renderer,
+    textures,
+    cameras,
+    lights,
+    metrics_rgb,
+    metrics_silhouette,
+    metrics_verts,
+    metrics_shape,
+    sensor_size,
+    save_path,
+    eval_iterations,
+):
+    shapemodel = firefly_scene.meshes[shapemodel_key]
+    firefly_scene.randomize()
+
+    for i in range(eval_iterations):
+        mesh, target_rgb, target_silhouette, segmentation = generate_sample(
+            shapemodel, textures, config, gt_renderer, cameras, lights
+        )
+        pred_mesh, pred_shape_params, ndc_hits, ndc_non_hits = inference(
+            model, shapemodel, textures, sensor_size, Laser, intrinsic, segmentation
+        )
+
+        images_predicted = diff_renderer(pred_mesh, cameras=cameras, lights=lights)
+
+        for metric in metrics_rgb:
+            metric.eval[target_rgb, images_predicted[..., :3]]
+
+        for metric in metrics_silhouette:
+            metric.eval[target_silhouette, images_predicted[..., 3]]
+
+        for metric in metrics_verts:
+            metric.eval(mesh.verts_padded(), pred_mesh.verts_padded())
+
+        for metric in metrics_shape:
+            metric.eval(shapemodel.poseParams(), pred_shape_params)
+
+    for metric in metrics_rgb:
+        metric.save(save_path, i)
+
+    for metric in metrics_silhouette:
+        metric.save(save_path, i)
+
+    for metric in metrics_verts:
+        metric.save(save_path, i)
+
+    for metric in metrics_shape:
+        metric.save(save_path, i)
 
 
-def get_visualization(model, config, tex_size, Laser, intrinsic):
-    pass
+def get_visualization(
+    model,
+    textures,
+    config,
+    gt_renderer,
+    diff_renderer,
+    cameras,
+    lights,
+    Laser,
+    intrinsic,
+    sensor_size,
+):
+    shapemodel = firefly_scene.meshes[shapemodel_key]
+    firefly_scene.randomize()
+
+    mesh, target_rgb, target_silhouette, segmentation = generate_sample(
+        shapemodel, textures, config, gt_renderer, cameras, lights
+    )
+
+    pred_mesh, _, ndc_hits, ndc_non_hits = inference(
+        config,
+        model,
+        shapemodel,
+        textures,
+        sensor_size,
+        Laser,
+        intrinsic,
+        segmentation,
+    )
+    ndc_points = ndc_hits
+
+    ndc_raster = rasterization.rasterize_points(
+        ndc_points[:, 0:2], config.sigma, sensor_size
+    )
+    ndc_tex = rasterization.softor(ndc_raster)
+
+    images_predicted = diff_renderer(pred_mesh, cameras=cameras, lights=lights)
+    rgb_predicted = images_predicted[..., :3]
+    silhouette_predicted = images_predicted[..., 3]
+
+    return target_rgb, target_silhouette, rgb_predicted, silhouette_predicted
 
 
-def save_checkpoint(model, optim, Laser, iter, losses, save_path):
-    checkpoint = {
-        "optimizer": optim.state_dict(),
-        "laser_rays": Laser._rays,
-        "iteration": iter + 1,
-        "losses": losses,
-    }
-    checkpoint.update(model.get_statedict())
-    torch.save(checkpoint, os.path.join(save_path, f"model_{iter:05d}.pth.tar"))
 
 
 def evaluate(config, args):
@@ -766,15 +876,3 @@ def save_images(gt_render, pred_render, save_path, iter):
 
 
 if __name__ == "__main__":
-    parser = Args.GlobalArgumentParser()
-    args = parser.parse_args()
-
-    config_path = os.path.join(args.scene_path, "config.yml")
-    config_args = CAP.ConfigArgsParser(utils.read_config_yaml(config_path), args)
-    config_args.printFormatted()
-    config = config_args.asNamespace()
-
-    if args.eval:
-        evaluate(config, args)
-    else:
-        main(config, args)

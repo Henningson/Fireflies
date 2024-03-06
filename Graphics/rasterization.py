@@ -104,7 +104,7 @@ def rasterize_depth(
     )
 
     # scale by depth in range [0, 1]
-    return point_distances * depth_vals.unsqueeze(1)
+    return point_distances * depth_vals.unsqueeze(-1)
 
 
 def rasterize_lines(
@@ -536,6 +536,21 @@ def rasterize_points_baked_sum(
         tex += point_distances
 
     return tex
+
+
+def subsampled_point_raster(ndc_points, num_subsamples, sigma, sensor_size):
+    subsampled_rastered_depth = []
+    for i in range(num_subsamples):
+        rastered_depth = rasterize_depth(
+            ndc_points[:, 0:2], ndc_points[:, 2:3], sigma, sensor_size // 2**i
+        )
+        rastered_depth = softor(rastered_depth, keepdim=True)
+        # rastered_depth = (rastered_depth - rastered_depth.min()) / (
+        #    rastered_depth.max() - rastered_depth.min()
+        # )
+        subsampled_rastered_depth.append(rastered_depth)
+    return subsampled_rastered_depth
+
 
 
 def get_mpl_colormap(cmap):

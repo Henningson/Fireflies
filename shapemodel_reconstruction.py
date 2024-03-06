@@ -298,15 +298,11 @@ def show_rendered_mesh(
     shape_params = ((torch.rand(batch_size, num_shape_params) - 0.5) * 2.0).to(
         device
     )  # Shape to [-1, 1]
-    shape_params *= 5.0
+    shape_params *= 2.0
     # shape_params += 0.0
 
     # Cerating a batch of neutral expressions
-    expression_params = (
-        (torch.rand(batch_size, num_expression_params) - 0.5) * 2.0
-    ).to(
-        device
-    )  # Expression to [-1, 1]
+    expression_params = torch.zeros(batch_size, num_expression_params, device=device)
     expression_params *= 0.0
 
     vertices, _ = flamelayer(shape_params, expression_params, pose_params)
@@ -392,9 +388,11 @@ def main():
     config = config.asNamespace()
 
     NUM_SHAPE_PARAMS = 100
-    config.batch_size = config.num_views_per_iteration
+    config.batch_size = config.num_views
     sigma = torch.tensor([config.sigma], device=DEVICE)
-    global_scene = mi.load_file(os.path.join(args.scene_path, "scene.xml"))
+    global_scene = mi.load_file(
+        os.path.join(args.scene_path, "scene.xml"), parallel=False
+    )
     global_params = mi.traverse(global_scene)
 
     if hasattr(config, "downscale_factor"):
@@ -418,10 +416,7 @@ def main():
     )
     firefly_scene.randomize()
 
-    shapemodel_key = None
-    for key, value in firefly_scene.meshes.items():
-        if isinstance(value, Transformable.ShapeModel):
-            shapemodel_key = key
+    shapemodel_key = "PLYMesh"
 
     camera_sensor = global_scene.sensors()[0]
     camera_x_fov = global_params["PerspectiveCamera.x_fov"]
@@ -463,33 +458,30 @@ def main():
     optim = torch.optim.Adam(
         [
             {"params": model.parameters(), "lr": config.lr_model},
-            {"params": Laser._rays, "lr": 0.0},
+            {"params": Laser._rays, "lr": config.lr_laser},
             {"params": sigma, "lr": config.lr_sigma},
         ]
     )
 
     losses = {
-        "rgb": {"weight": 1.0, "values": []},
+        "rgb": {"weight": 2.0, "values": []},
         "silhouette": {"weight": 1.0, "values": []},
         "chamf": {"weight": 0.5, "values": []},
-        "shape_params": {"weight": 0.0, "values": []},
-        "scene_seg": {"weight": 0.2, "values": []},
+        "shape_params": {"weight": 1.0, "values": []},
+        "scene_seg": {"weight": 0.0, "values": []},
     }
 
-    # scheduler = torch.optim.lr_scheduler.PolynomialLR(optim, power=0.99, total_iters=config.iterations)
+    scheduler = torch.optim.lr_scheduler.PolynomialLR(
+        optim, power=0.99, total_iters=config.iterations
+    )
     shapemodel = firefly_scene.meshes[shapemodel_key]
     # Hacky magic number here. But we want a better L2 Loss
     vertex_color = torch.randn(1, 5023, 3).to(DEVICE)
     textures = Textures(verts_rgb=vertex_color)
 
-    reduction_steps = config.sigma_reduce_end
-    sigma_step = (config.sigma - config.sigma_end) / reduction_steps
     for i in (progress_bar := tqdm(range(config.iterations))):
         if i == config.warmup_iterations:
             optim.param_groups[1]["lr"] = config.lr_laser
-
-        if i < reduction_steps:
-            sigma = sigma - sigma_step
 
         with torch.no_grad():
             vertices, _ = shapemodel.getVertexData()
@@ -527,6 +519,7 @@ def main():
         ).squeeze()
         ndc_points = transforms.transform_points(world_points_hat, K_CAMERA).squeeze()
 
+        visualization_points = ndc_points.clone()
         # We should remove points, that do not fall into the object itself here.
         image_space_points = ndc_points[:, 0:2] * sensor_size
         quantized_indices = image_space_points.floor().int()
@@ -546,7 +539,7 @@ def main():
         world_points = world_points[object_hits]
 
         ndc_raster = rasterization.rasterize_points(
-            ndc_points[:, 0:2], config.sigma, sensor_size
+            non_hits_ndc[:, 0:2], config.sigma, sensor_size
         )
         ndc_tex = rasterization.softor(ndc_raster)
         sample_volume = pointcloud_to_volume(
@@ -570,10 +563,10 @@ def main():
         images_predicted = diff_renderer(pred_mesh, cameras=cameras, lights=lights)
 
         loss_silhouette = loss_funcs(images_predicted[..., 3], target_silhouette)
-        loss["silhouette"] += loss_silhouette / config.num_views_per_iteration
+        loss["silhouette"] += loss_silhouette / config.num_views
 
         loss_rgb = loss_funcs(images_predicted[..., :3], target_rgb)
-        loss["rgb"] += loss_rgb / config.num_views_per_iteration
+        loss["rgb"] += loss_rgb / config.num_views
 
         loss_seg = loss_funcs(segmentation, ndc_tex)
         loss["scene_seg"] += loss_seg
@@ -581,9 +574,11 @@ def main():
         loss_verts = chamfer_distance(mesh.verts_padded(), pred_vertices)[0]
         loss["chamf"] += loss_verts
 
-        loss_shape = (
-            torch.nn.L1Loss()(estimated_shape_params, shapemodel.shapeParams())
-            / NUM_SHAPE_PARAMS
+        exponential_shape_decay = torch.arange(0, 20, 1, device=DEVICE)
+        exponential_shape_decay = torch.exp(-0.5 * exponential_shape_decay)
+        loss_shape = torch.nn.L1Loss()(
+            estimated_shape_params[:, :20] * exponential_shape_decay,
+            shapemodel.shapeParams()[:, :20] * exponential_shape_decay,
         )
         loss["shape_params"] += loss_shape
 
@@ -604,7 +599,7 @@ def main():
         # Gradient Accumulation
         if i > 0 and i % config.gradient_accumulation_steps == 0:
             optim.step()
-            # scheduler.step()
+            scheduler.step()
             optim.zero_grad()
 
         with torch.no_grad():
@@ -614,16 +609,14 @@ def main():
             sensor_size = torch.tensor(
                 global_scene.sensors()[0].film().size(), device=DEVICE
             )
-            sparse_depth = rasterization.rasterize_points(
-                ndc_points[:, 0:2], config.sigma, sensor_size
+            laser_texture = rasterization.rasterize_points(
+                visualization_points[:, 0:2], config.sigma, sensor_size
             )
-            sparse_depth = rasterization.softor(sparse_depth)
-            sparse_depth = sparse_depth.detach().cpu().numpy() * 255
-            sparse_depth = sparse_depth.astype(np.uint8)
+            laser_texture = rasterization.softor(laser_texture)
+            laser_texture = laser_texture.detach().cpu().numpy() * 255
+            laser_texture = laser_texture.astype(np.uint8)
 
-            cv2.imshow(
-                "Points", (ndc_tex.detach().cpu().numpy() * 255).astype(np.uint8)
-            )
+            cv2.imshow("Points", laser_texture)
             cv2.waitKey(1)
 
     plot_losses(losses)

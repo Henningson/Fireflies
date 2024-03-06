@@ -116,8 +116,6 @@ def get_segmentation_from_camera(scene, spp=1):
         mi.Float(pos % int(film_size[0])), mi.Float(pos // int(film_size[0]))
     )
 
-    pos += sampler.next_2d()
-
     # Sample rays starting from the camera sensor
     rays, weights = sensor.sample_ray(
         time=0, sample1=sampler.next_1d(), sample2=pos * scale, sample3=0
@@ -132,6 +130,7 @@ def get_segmentation_from_camera(scene, spp=1):
         dr.reinterpret_array_v(mi.UInt, surface_interaction.shape)
     ).torch()
     shape_pointer -= shape_pointer.min()
+    shape_pointer = shape_pointer.max() - shape_pointer
 
     return shape_pointer.reshape(film_size[1], film_size[0])
 

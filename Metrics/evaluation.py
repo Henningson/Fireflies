@@ -7,6 +7,7 @@ import os
 from torchmetrics.image import PeakSignalNoiseRatio
 from pytorch3d.loss import chamfer_distance
 
+
 def RSME(x, y):
     mse_loss = torch.nn.MSELoss(reduction="mean")
     return torch.sqrt(mse_loss(x, y))
@@ -16,9 +17,9 @@ def MAE(x, y):
     l1_loss = torch.nn.L1Loss(reduction="mean")
     return l1_loss(x, y)
 
+
 def CHAMFER(x, y):
     return chamfer_distance(x, y)
-
 
 
 class EvaluationCriterion:
@@ -52,7 +53,7 @@ class EvaluationCriterion:
 
     def save(self, path, iter) -> None:
         fullpath = os.path.join(path, f"{self._eval_func.__name__}.csv")
-        with open(fullpath, "w+", newline="") as file:
+        with open(fullpath, "a", newline="") as file:
             writer = csv.writer(file)
             writer.writerow([iter, self.getTotalError(), self.getNormalizedError()])
 

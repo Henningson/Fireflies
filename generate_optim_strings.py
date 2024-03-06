@@ -8,7 +8,35 @@ def generate_smarty_string(scene_path, pattern, smarty_max_radius, lr_laser):
     return f'python main.py --scene_path "{scene_path}" --pattern_initialization "{pattern}" --n_beams {int(smarty_max_radius)} --smarty_max_radius {smarty_max_radius} --lr_laser {lr_laser};'
 
 
+def generate_flame_shape_string(scene_path, pattern, lr_laser):
+    return f'python shapemodel_reconstruction_2.py --scene_path "{scene_path}" --pattern_initialization "{pattern}" --lr_laser {lr_laser};'
+
+
 if __name__ == "__main__":
+    GRID_PATTERN = "GRID"
+    POISSON_PATTERN = "POISSON"
+    SMARTY_PATTERN = "SMARTY"
+    UNIFORM_PATTERN = "RANDOM"
+
+    scene_path = "scenes/FlameShape"
+    laser_lr_off = "0.00"
+    laser_lr_on = "0.001"
+
+    PATTERNS = [GRID_PATTERN, POISSON_PATTERN, SMARTY_PATTERN, UNIFORM_PATTERN]
+    LASER_OFF_ON = [laser_lr_off, laser_lr_on]
+
+    streng = ""
+    count = 0
+    for pattern in PATTERNS:
+        for laser_status in LASER_OFF_ON:
+            streng += generate_flame_shape_string(scene_path, pattern, laser_status)
+            count += 1
+
+    print(f"Time Estimate: {count * 10 / 60:.5f} Hours")
+
+    print(streng)
+
+    exit()
     blue_noise_points = [100, 150, 200, 250, 300, 350, 400]
     grid_points = [100, 144, 196, 256, 324, 361, 400]
     random_points = [100, 150, 200, 250, 300, 350, 400]
@@ -16,14 +44,6 @@ if __name__ == "__main__":
 
     vf_path = "scenes/Vocalfold"
     colon_path = "scenes/RealColon"
-
-    laser_lr_off = "0.00"
-    laser_lr_on = "0.001"
-
-    GRID_PATTERN = "GRID"
-    POISSON_PATTERN = "POISSON"
-    SMARTY_PATTERN = "SMARTY"
-    UNIFORM_PATTERN = "RANDOM"
 
     streng = ""
     count = 0
