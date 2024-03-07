@@ -463,9 +463,23 @@ class FlameShapeModel(ShapeModel):
 
         self.setVertices(vertex_data)
         self.setScaleBoundaries(config["scale"])
+        self._animated = True
         self._stddev_range = config["stddev_range"]
         self._shape_layer = flame.FLAME(flame_config).to(self._device)
         self._faces = self._shape_layer.faces
+        self._pose_params = torch.zeros(1, 6, device=self._device)
+        self._expression_params = torch.zeros(1, 50, device=self._device)
+        self._shape_params = (
+            (torch.rand(1, 100, device=self._device) - 0.5) * 2.0 * self._stddev_range
+        )
+        self._shape_params[:, 20:] = 0.0
+
+
+    def train(self) -> None:
+        Transformable.train(self)
+
+    def eval(self) -> None:
+        Transformable.eval(self)
 
     def loadAnimation(self):
         return None
@@ -482,17 +496,19 @@ class FlameShapeModel(ShapeModel):
     def poseParams(self) -> torch.tensor:
         return self._pose_params
 
-    def getVertexData(self):
-        if not self._animated:
-            return self._vertices, self._shape_layer.faces
-
+    def randomize(self) -> None:
         self._shape_params = (
             (torch.rand(1, 100, device=self._device) - 0.5) * 2.0 * self._stddev_range
         )
         self._shape_params[:, 20:] = 0.0
 
-        self._pose_params = torch.zeros(1, 6, device=self._device)
-        self._expression_params = torch.zeros(1, 50, device=self._device)
+        self._randomized_world = (
+            self.sampleTranslation() @ self.sampleRotation() @ self.sampleScale()
+        )
+
+    def getVertexData(self):
+        if not self._animated:
+            return self._vertices, self._shape_layer.faces
 
         vertices, _ = self._shape_layer(
             self._shape_params, self._expression_params, self._pose_params

@@ -236,7 +236,14 @@ def main(config, args):
             loss_values,
         )
 
+        render, pred, gt, tex = get_visualization(
+            model, config, tex_size, Laser, K_CAMERA
+        )
+        # visualize(render, pred, gt, tex)
+        save_image(tex, save_render_path, i)
+
         progress_bar.set_description(f"Loss: {loss:.5f}")
+        continue
         with torch.no_grad():
             if i > 0 and (i % config.eval_at_every == 0 or i == config.iterations - 1):
                 model.eval()
@@ -261,14 +268,8 @@ def main(config, args):
                 for metric in metrics:
                     metric.save(save_path, i)
 
-                render, pred, gt, tex = get_visualization(
-                    model, config, tex_size, Laser, K_CAMERA
-                )
                 if config.visualize:
                     visualize(render, pred, gt, tex)
-
-                if config.save_images:
-                    save_images(render, pred, gt, tex, save_path, i)
 
                 model.train()
                 firefly_scene.train()
@@ -535,6 +536,14 @@ def train(
             dense_depth.unsqueeze(0).unsqueeze(0).repeat(1, 3, 1, 1),
         )
 
+        laser_points = Laser.generateTexture(sigma, tex_size)
+        loss += (
+            torch.nn.L1Loss()(
+                rasterization.softor(laser_points), laser_points.sum(dim=0)
+            )
+            * config.vicinity_penalty_lambda
+        )
+
         # Make sure that epipolar lines do not overlap too much
         """
         lines = Laser.render_epipolar_lines(sigma, tex_size)
@@ -594,7 +603,11 @@ if __name__ == "__main__":
     parser = Args.GlobalArgumentParser()
     args = parser.parse_args()
 
-    config_path = os.path.join(args.scene_path, "config.yml")
+    config_path = (
+        os.path.join(args.scene_path, "config.yml")
+        if args.checkpoint_path is None
+        else os.path.join(args.checkpoint_path, "config.yml")
+    )
     config_args = CAP.ConfigArgsParser(utils.read_config_yaml(config_path), args)
     config_args.printFormatted()
     config = config_args.asNamespace()

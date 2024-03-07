@@ -112,6 +112,7 @@ class GlobalArgumentParser(argparse.ArgumentParser):
         self.add_argument("--upscale", type=float, help="Should a video be saved?")
 
         self.add_argument("--eval", action="store_true")
+        self.add_argument("--eval_dir", action="store_true")
         self.add_argument(
             "--eval_iter_final", type=int, help="Number of evaluation iterations."
         )

@@ -545,8 +545,8 @@ def main(config_args, args):
     max_dist = 2.366
 
     for i in (progress_bar := tqdm(range(config.iterations))):
-        if i == config.warmup_iterations:
-            optim.param_groups[1]["lr"] = config.lr_laser
+        firefly_scene.randomize()
+        optim.zero_grad()
 
         with torch.no_grad():
             vertices, _ = shapemodel.getVertexData()
@@ -571,9 +571,6 @@ def main(config_args, args):
                 "Seg", segmentation.detach().cpu().numpy().astype(np.uint8) * 255
             )
             cv2.waitKey(1)
-
-        firefly_scene.randomize()
-        optim.zero_grad()
 
         sensor_size = torch.tensor(
             global_scene.sensors()[0].film().size(), device=DEVICE
@@ -745,8 +742,8 @@ def main(config_args, args):
 
     save_checkpoint(model, optim, Laser, i + 1, losses, save_path)
 
-    #plot_losses(losses)
-    #plt.show()
+    # plot_losses(losses)
+    # plt.show()
 
 
 def save_checkpoint(model, optim, Laser, iter, losses, save_path):
@@ -821,7 +818,6 @@ def evaluate(config_args, args):
     Laser._rays = state_dict["laser_rays"]
     num_beams = Laser._rays.shape[0]
 
-    firefly_scene.eval()
     model.eval()
 
     gt_renderer, diff_renderer, cameras, lights = get_cameras_and_renderer(
@@ -892,7 +888,7 @@ def evaluate(config_args, args):
         pred_vertices = toMinusOneOne(toUnitCube(pred_vertices))
 
         for metric in metrics:
-            metric.eval(pred_vertices, vertices)
+            metric.eval(estimated_shape_params, shapemodel.shapeParams())
 
     for metric in metrics:
         print(metric)
@@ -903,10 +899,45 @@ if __name__ == "__main__":
     parser = Args.GlobalArgumentParser()
     args = parser.parse_args()
 
+    if args.checkpoint_path is not None and args.eval_dir:
+        temp = args.checkpoint_path
+        BASES = [
+            "GRID",
+            "GRID_LR",
+            "POISSON",
+            "POISSON_LR",
+            "RANDOM",
+            "RANDOM_LR",
+            "SMARTY",
+            "SMARTY_LR",
+        ]
+
+        for base in BASES:
+            args.checkpoint_path = os.path.join(temp, base)
+            checkpoint_base = args.checkpoint_path
+            folders = [
+                folder
+                for folder in os.listdir(args.checkpoint_path)
+                if os.path.isdir(os.path.join(checkpoint_base, folder))
+            ]
+            folders.sort()
+
+            for folder in folders:
+                args.checkpoint_path = os.path.join(checkpoint_base, folder)
+                config_path = os.path.join(args.checkpoint_path, "config.yml")
+                config_args = CAP.ConfigArgsParser(
+                    utils.read_config_yaml(config_path), args
+                )
+                # config_args.printFormatted()
+                printer.Printer.OKC(folder)
+                evaluate(config_args, args)
+                printer.Printer.OKG("Done evaluating")
+
+    exit()
+
     config_path = os.path.join(args.scene_path, "config.yml")
     config_args = CAP.ConfigArgsParser(utils.read_config_yaml(config_path), args)
     config_args.printFormatted()
-
     if args.eval:
         evaluate(config_args, args)
     else:

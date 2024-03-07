@@ -292,15 +292,15 @@ if __name__ == "__main__":
     import rasterization
     from argparse import Namespace
 
-    base_path = "scenes/Vocalfold/"
+    base_path = "scenes/RealColon/"
 
     config = utils.read_config_yaml(os.path.join(base_path, "config.yml"))
     config = Namespace(**config)
 
     mitsuba_scene = mi.load_file(os.path.join(base_path, "scene.xml"))
     mitsuba_params = mi.traverse(mitsuba_scene)
-    mitsuba_params["PerspectiveCamera.film.size"] //= 2
-    mitsuba_params["PerspectiveCamera_1.film.size"] //= 2
+    mitsuba_params["PerspectiveCamera.film.size"] //= config.downscale_factor
+    mitsuba_params["PerspectiveCamera_1.film.size"] //= config.downscale_factor
     mitsuba_params["Projector.to_world"] = mitsuba_params[
         "PerspectiveCamera_1.to_world"
     ]
@@ -311,7 +311,6 @@ if __name__ == "__main__":
 
     firefly_scene = Scene(mitsuba_params, base_path, sequential_animation=True)
     firefly_scene.eval()
-    firefly_scene.randomize()
 
     laser_init = LaserEstimation.initialize_laser(
         mitsuba_scene,
@@ -343,23 +342,30 @@ if __name__ == "__main__":
     cv2.imshow("Sexy Tex", img_plot[:, :, [2, 1, 0]])
     """
 
-    texture_init = rasterization.rasterize_points(points, sigma, texture_size)
+
+    points = torch.tensor([[0.5, 0.5]], device=points.device)
+    
+    #for i in range(1, 1000):
+    texture_init = rasterization.rasterize_points(points, 300.0**2, texture_size)
     texture_init = rasterization.softor(texture_init)
 
-    texture_init = torch.ones(texture_init.shape, device=texture_init.device)
+    #texture_init = torch.ones(texture_init.shape, device=texture_init.device)
     # texture_init = torch.flipud(texture_init)
+    #print(i)
+    cv2.imshow("Wat", texture_init.detach().cpu().numpy())
+    cv2.waitKey(1)
 
-    # cv2.imshow("Wat", texture_init.detach().cpu().numpy())
-    # cv2.waitKey(1)
     mitsuba_params["tex.data"] = texture_init.unsqueeze(-1)
 
     # firefly_scene.randomize()
     # render_im = mi.render(mitsuba_scene)
 
-    for i in tqdm(range(100000)):
+    for i in tqdm(range(50)):
         firefly_scene.randomize()
 
-        render_im = mi.render(mitsuba_scene, spp=10)
+        render_im = mi.render(mitsuba_scene, spp=100)
         render_im = torch.clamp(render_im.torch(), 0, 1)[:, :, [2, 1, 0]].cpu().numpy()
-        cv2.imshow("Render", render_im)
-        cv2.waitKey(0)
+        render_im *= 255
+        render_im = render_im.astype(np.uint8)
+        cv2.imwrite(f"assets/DepthCompletionComparison/render/render_{i:05d}.png", render_im)
+        cv2.waitKey(1)

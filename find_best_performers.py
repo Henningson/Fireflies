@@ -10,11 +10,11 @@ def extract_normalized_error(file_path: str) -> float:
     with open(file_path, "r") as csvfile:
         csv_reader = csv.reader(csvfile)
 
-        # Get the first row
-        first_row = next(csv_reader)
+        for row in csv_reader:
+            last_row = row
 
         # Access the third element
-        normalized_error = float(first_row[2])
+        normalized_error = float(last_row[2])
         return normalized_error
 
 
@@ -62,7 +62,9 @@ def get_mean_and_std_of_all(scene_path, folders) -> None:
     rsmes_total = []
 
     for folder in folders:
-        folder_base_path = os.path.join(scene_path, "optim", folder)
+        folder_base_path = os.path.join(
+            scene_path, "optim", "LOW_NUM_OF_POINTS", folder
+        )
         _, maes, rmses, _ = find_and_load_errors(folder_base_path)
 
         rsmes_total += rmses
@@ -77,7 +79,9 @@ def get_mean_and_std_of_all(scene_path, folders) -> None:
 
 def find_best_performing_networks(scene_path, folders) -> None:
     for folder in folders:
-        folder_base_path = os.path.join(scene_path, "optim", folder)
+        folder_base_path = os.path.join(
+            scene_path, "optim", "LOW_NUM_OF_POINTS", folder
+        )
         checkpoint_folder, maes, rmses, rays = find_and_load_errors(folder_base_path)
 
         mae_min_index, mae_min = get_min_and_index(maes)
@@ -98,11 +102,26 @@ def generate_performance_plot(scene_path, folders):
     fig.suptitle("MAE and RSME curves")
 
     for folder in folders:
-        folder_base_path = os.path.join(scene_path, "optim", folder)
+        folder_base_path = os.path.join(
+            scene_path, "optim", "LOW_NUM_OF_POINTS", folder
+        )
         _, maes, rmses, num_rays = find_and_load_errors(folder_base_path)
 
-        axs[0].plot(num_rays, maes, label=folder, lw=10, solid_capstyle="round")
-        axs[1].plot(num_rays, rmses, label=folder, lw=10, solid_capstyle="round")
+        folder_beautified = (
+            folder.replace("_2500_", " ")
+            .replace("LR", "Optimized")
+            .replace("_2500", "")
+            .replace("SMARTY", "DEPTH")
+            .replace("RANDOM", "UNIFORM")
+            .title()
+        )
+
+        axs[0].plot(
+            num_rays, maes, label=folder_beautified, lw=5, solid_capstyle="round"
+        )
+        axs[1].plot(
+            num_rays, rmses, label=folder_beautified, lw=5, solid_capstyle="round"
+        )
 
     axs[0].legend(loc="upper right")
     axs[1].legend(loc="upper right")
@@ -113,17 +132,18 @@ def generate_performance_plot(scene_path, folders):
 if __name__ == "__main__":
     vocalfold_base_path = "scenes/Vocalfold"
     realcolon_base_path = "scenes/RealColon"
+    shape_base_path = "scenes/FlameShape"
 
     folders = [
-        "POISSON_2500",
-        "RANDOM_2500",
-        "GRID_2500",
-        "SMARTY_2500",
+        "POISSON",
+        "RANDOM",
+        "GRID",
+        "SMARTY",
     ]
 
-    lr_folders = ["POISSON_2500_LR", "RANDOM_2500_LR", "GRID_2500_LR", "SMARTY_2500_LR"]
+    lr_folders = ["POISSON_LR", "RANDOM_LR", "GRID_LR", "SMARTY_LR"]
 
-    get_mean_and_std_of_all(vocalfold_base_path, folders)
-    get_mean_and_std_of_all(vocalfold_base_path, lr_folders)
-    find_best_performing_networks(vocalfold_base_path, folders + lr_folders)
-    generate_performance_plot(vocalfold_base_path, folders + lr_folders)
+    get_mean_and_std_of_all(shape_base_path, folders)
+    get_mean_and_std_of_all(shape_base_path, lr_folders)
+    find_best_performing_networks(shape_base_path, folders + lr_folders)
+    generate_performance_plot(shape_base_path, folders + lr_folders)
