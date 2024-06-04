@@ -305,7 +305,7 @@ if __name__ == "__main__":
     from tqdm import tqdm
     import matplotlib.pyplot as plt
     import cv2
-    import rasterization
+    import graphics.rasterization
     from argparse import Namespace
 
     base_path = "scenes/Vocalfold/"
@@ -334,7 +334,7 @@ if __name__ == "__main__":
     firefly_scene = Scene(mitsuba_params, base_path, sequential_animation=True)
     firefly_scene.eval()
 
-    laser_init = LaserEstimation.initialize_laser(
+    laser_init = utils.laser_estimation.initialize_laser(
         mitsuba_scene,
         mitsuba_params,
         firefly_scene,
@@ -379,8 +379,10 @@ if __name__ == "__main__":
         camera_far_clip,
     ).matrix.torch()[0]
 
-    texture_init = rasterization.rasterize_points(points, config.sigma, texture_size)
-    texture_init = rasterization.softor(texture_init)
+    texture_init = graphics.rasterization.rasterize_points(
+        points, config.sigma, texture_size
+    )
+    texture_init = graphics.rasterization.softor(texture_init)
 
     '''
     laser_init._rays.requires_grad = True
