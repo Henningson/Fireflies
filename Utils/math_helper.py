@@ -6,7 +6,7 @@ import math
 random.seed(0)
 
 
-def uniformBetweenValues(a: float, b: float):
+def uniformBetweenValues(a: float, b: float) -> float:
     return random.uniform(a, b)
 
 

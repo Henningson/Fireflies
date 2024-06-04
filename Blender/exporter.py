@@ -347,9 +347,7 @@ if __name__ == "__main__":
     obj = bpy.context.active_object
     scene = bpy.context.scene
 
-    generateSceneConstraints(
-        bpy.context, "/home/nu94waro/Documents/Vocalfold/DSLPO/scenes/TestbedWithBG/"
-    )
+    generateSceneConstraints(bpy.context, "path")
 
 # if is_deformable(scene, obj):
 #    bpy.ops.export_scene.obj(filepath=file_path, use_selection=True, use_animation=True)
