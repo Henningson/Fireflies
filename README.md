@@ -7,6 +7,7 @@ That is also why you'll find a lot of Single-Shot Structured Light specific stuf
 
 This repository accompanies the paper **Fireflies: Domain-specific Structured Light
 Optimization for Medical 3D Reconstruction** published at MICCAI'24.
+The code for the paper can be found in the paper-branch.
 This is a joint work of the <a href="https://www.lgdv.tf.fau.de/">Chair of Visual Computing</a> of the Friedrich-Alexander University of Erlangen-Nuremberg and the <a href="https://www.hno-klinik.uk-erlangen.de/phoniatrie/">Phoniatric Division</a> of the University Hospital Erlangen. 
 
 
@@ -23,11 +24,11 @@ install stuff
 # Usage
 ```
 import mitsuba
-import Firefly
+import fireflies
 
 mi_scene = mi.scene(path)
 mi_params = mi.traverse(mi_scene)
-ff_scene = Firefly.Scene(mi_params)
+ff_scene = fireflies.scene(mi_params)
 
 mesh = ff_scene.getMesh("test")
 mesh.translateX(-5, 5)
@@ -37,9 +38,6 @@ firefly_scene.eval()
 for i in range(0, 20):
     ff_scene.randomize()
     rendered_scene = mi.render(mi_scene)
-
-
-
 ```
 
 # Blender Script

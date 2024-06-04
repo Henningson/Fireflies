@@ -17,7 +17,7 @@ import projection
 import utils
 
 
-class Scene:
+class scene:
     def from_blender(
         mi_params,
         mitsuba_xml_path: str,

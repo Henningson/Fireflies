@@ -4,12 +4,12 @@ import random
 from geomdl import NURBS
 from typing import List
 
-import transformable
+import fireflies.entity.base as base
 import fireflies.utils.math
 import fireflies.utils.transforms
 
 
-class curve(transformable.transformable):
+class curve(base.transformable):
     count = 0.0
 
     def fromObj(path):
@@ -23,7 +23,7 @@ class curve(transformable.transformable):
         config: dict,
         device: torch.cuda.device = torch.device("cuda"),
     ):
-        transformable.transformable.__init__(self, name, config, device)
+        base.transformable.__init__(self, name, config, device)
 
         self._curve = curve
         self._curve.ctrlpts = self.convertToLocal(self._curve.ctrlpts)

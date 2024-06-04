@@ -5,13 +5,13 @@ import numpy as np
 import pywavefront
 from typing import List
 
-import transformable
+import fireflies.entity.base as base
 
 import fireflies.utils.math
 import fireflies.utils.transforms
 
 
-class Mesh(transformable.transformable):
+class Mesh(base.transformable):
     def __init__(
         self,
         name: str,
@@ -21,7 +21,7 @@ class Mesh(transformable.transformable):
         base_path: str = None,
         sequential_animation: bool = True,
     ):
-        transformable.transformable.__init__(self, name, config, device)
+        base.transformable.__init__(self, name, config, device)
         self._base_path = base_path
 
         self.setVertices(vertex_data)
@@ -35,14 +35,14 @@ class Mesh(transformable.transformable):
         return self._animated
 
     def train(self) -> None:
-        transformable.transformable.train(self)
+        base.transformable.train(self)
         self._sequential_animation = False
 
         if self._animated:
             self.loadAnimation(self._base_path, self._name)
 
     def eval(self) -> None:
-        transformable.transformable.eval(self)
+        base.transformable.eval(self)
         self._sequential_animation = True
         if self._animated:
             eval_path = f"{self._name}_eval"

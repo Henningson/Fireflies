@@ -1,4 +1,1 @@
-import entity
-import graphics
-import projection
-import sampling
+from fireflies.scene import Scene

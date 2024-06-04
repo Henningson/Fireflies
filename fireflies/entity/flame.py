@@ -3,7 +3,7 @@ import numpy as np
 import flame_pytorch.flame as flame
 from typing import List
 
-import transformable
+import fireflies.entity.base as base
 import shape
 
 import fireflies.utils.math
@@ -83,10 +83,10 @@ class FlameShapeModel(shape.ShapeModel):
         self._invert = False
 
     def train(self) -> None:
-        transformable.Transformable.train(self)
+        base.Transformable.train(self)
 
     def eval(self) -> None:
-        transformable.Transformable.eval(self)
+        base.Transformable.eval(self)
 
     def loadAnimation(self):
         return None
