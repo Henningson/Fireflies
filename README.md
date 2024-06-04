@@ -1,4 +1,4 @@
-![Fireflies](assets/firefly_logo.png)
+![Fireflies](https://github.com/Henningson/Fireflies/assets/27073509/36254690-b42a-4604-849f-ebfa4ffa69c6)
 
 **Fireflies** is a wrapper for the <a href="https://mitsuba.readthedocs.io/en/latest/">Mitsuba Renderer</a> and allows for rapid prototyping and generation of physically-based renderings and simulation data in a differentiable manner.
 It can be used for example, to easily generate highly realistic medical imaging data for medical machine learning tasks.
@@ -19,9 +19,7 @@ git clone this
 install stuff
 ```
 
-
-
-![Fireflies](assets/TeaserMitEndoskopenOhneBG.png)
+![Datasets](https://github.com/Henningson/Fireflies/assets/27073509/9c617876-356a-420d-8632-cf4c286d6778)
 # Usage
 ```
 import mitsuba
@@ -44,11 +42,18 @@ for i in range(0, 20):
 
 ```
 
-# Building your own Scene using Blender
+# Blender Script
 First, make sure you have the <a href="https://github.com/mitsuba-renderer/mitsuba-blender">Mitsuba Blender Add-On</a> installed.
-The Firefly Blender Add-On can be found in the ```blender``` folder.
+The Firefly Blender script can be found in the ```blender``` folder.
+This is a very rudimentary script that lets you define position constraints using Blender itself, as well as export camera paths along curves.
 
-
+# Render Gallery
+<p align="center">
+<img src="https://github.com/Henningson/Fireflies/assets/27073509/dce49ad1-1d22-45b3-a544-2e1fbcd7b30c" height="150"/>
+<img src="https://github.com/Henningson/Fireflies/assets/27073509/f92fad5f-0913-40c8-947f-fa260f19c26e" height="150"/>
+<img src="https://github.com/Henningson/Fireflies/assets/27073509/429aa015-9987-4559-8776-b819f32ff81a" height="150"/>
+<img src="https://github.com/Henningson/Fireflies/assets/27073509/68922274-344b-42f0-81f5-b65693e11006" height="150"/>
+</p>
 
 # More Discussion about the Paper
 I think that the eight pages given in the MICCAI format is not enough to properly discuss everything. So here's some further discussion, thoughts and limitations.
@@ -58,11 +63,13 @@ The point pattern used in single-shot structured light can generally be regarded
 However, different sampling strategies allow for different observations, for example, here, a general image with different sampling strategies is shown.
 First, a gradient-based sampling, next a blue noise sampling, and lastly a vanilla random sampling.
 Which of these point pattern lets you decipher the image the best?
-![OptimizedPointSamples](https://github.com/Henningson/Fireflies/assets/27073509/f8b09d19-98a5-4736-90a3-770b63ab0666)
+<p align="center">
+<img src="https://github.com/Henningson/Fireflies/assets/27073509/f8b09d19-98a5-4736-90a3-770b63ab0666" height="150"/>
+</p>
 
 When it comes to laser based single shot structured light, this is a good case for how the distribution of the laser pattern directly influences the reconstructability of the scene.
-However, scenes are unlike images variable in its composition, i.e. objects may move, rotate or deform, or the camera may move, lighting changes, etc. etc.
-So finding a point pattern that is scene specific and optimal is a highly inverse problem.
+However, scenes are unlike images variable in its composition, i.e. objects may move, rotate or deform, or the camera may move, lighting changes, etc.  
+So finding a point pattern that is scene specific and optimal is a highly ill-posed problem.
 Thus, we often see structured light pattern, that are
  - easy to produce e.g. single line laser or symmetric point pattern,
  - or very general in its applicability.
@@ -101,24 +108,17 @@ This allows us to easily optimize via
 L\left(1 - \left(\prod_{i=0}^n 1 - I^G_{(i)} \right), \sum_{i=0}^n I^G_{(i)}\right)
 ```
 where $L$ may be any arbitrary loss function.
-A simple example with an $L1$ loss is given here:
-
-https://github.com/Henningson/DSLPO/assets/27073509/18e3d63c-3b3e-4ca0-92d5-a2c28b9ebb44
-
-
-This can easily be repurposed for other primitive types.
-Here, another example with points:
-
-https://github.com/Henningson/DSLPO/assets/27073509/aedea7b6-8e5e-40c1-85ca-31760bd60a70
-
-On another note, this optimizable measure can give very crude information about the "ambiguityness of a chosen pattern".
-If the measure is 0 then any laser point that is found in the image-space can be directly traced back towards the creating laser.
+This optimizable measure can give very crude information about the "ambiguityness of a chosen pattern".
+If the measure is 0 then any laser point that is found in image space can be directly traced back towards the creating laser.
 
 ## Limitations
-Right now the differentiable rasterization code needs a lot of VRAM. THere are some 
+Right now the differentiable rasterization code needs a lot of VRAM. 
 
 
 ## PSA
 Since I am now in my last year of my PhD, I won't be really able to further work on this library for the time being.
 Please start pull requests for features, Add-Ons, Bug-fixes, etc. I'd be very happy about any help. :)
+
+# Citations
+TODO
 
