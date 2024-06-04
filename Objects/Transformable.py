@@ -43,6 +43,9 @@ class Transformable:
         self._parent = None
         self._child = None
         self._train = True
+        self.xRot = 0.0
+        self.yRot = 0.0
+        self.zRot = 0.0
 
     def parent(self):
         return self._parent
@@ -92,9 +95,15 @@ class Transformable:
         )
 
     def sampleRotation(self) -> torch.tensor:
+        self.test = 0.0
+
         self.xRot = utilsmath.uniformBetweenValues(self.rot_min_x, self.rot_max_x)
         self.yRot = utilsmath.uniformBetweenValues(self.rot_min_y, self.rot_max_y)
-        self.zRot = utilsmath.uniformBetweenValues(self.rot_min_z, self.rot_max_z)
+
+        if self._child is not None:
+            self.zRot = self.zRot + (6.282 / 100)
+        else:
+            self.zRot = utilsmath.uniformBetweenValues(self.rot_min_z, self.rot_max_z)
 
         zMat = utilsmath.getPitchTransform(self.zRot, self._device)
         yMat = utilsmath.getYawTransform(self.yRot, self._device)
@@ -159,7 +168,7 @@ class Curve(Transformable):
         self._interp_steps = 1000
         self._interp_delta = 1.0 / self._interp_steps
 
-        self.eval_interval_start = 0.9
+        self.eval_interval_start = 0.05
 
     def train(self) -> None:
         self._train = True
@@ -474,6 +483,8 @@ class FlameShapeModel(ShapeModel):
         )
         self._shape_params[:, 20:] = 0.0
 
+        self._shape_params *= 0.0
+        self._invert = False
 
     def train(self) -> None:
         Transformable.train(self)
@@ -497,9 +508,9 @@ class FlameShapeModel(ShapeModel):
         return self._pose_params
 
     def randomize(self) -> None:
-        self._shape_params = (
-            (torch.rand(1, 100, device=self._device) - 0.5) * 2.0 * self._stddev_range
-        )
+        if self._shape_params[0, 0] > 2.0:
+            self._invert = True
+        self._shape_params = self._shape_params + (0.05 if not self._invert else -0.05)
         self._shape_params[:, 20:] = 0.0
 
         self._randomized_world = (

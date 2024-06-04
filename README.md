@@ -1,11 +1,59 @@
-# Fireflies
-**Fireflies** is a tool for the domain-specific optimization and generation of laser-based structured light pattern.
-This repository accompanies the paper **Fireflies: A working title**.
+![Fireflies](assets/firefly_logo.png)
+
+**Fireflies** is a wrapper for the <a href="https://mitsuba.readthedocs.io/en/latest/">Mitsuba Renderer</a> and allows for rapid prototyping and generation of physically-based renderings and simulation data in a differentiable manner.
+It can be used for example, to easily generate highly realistic medical imaging data for medical machine learning tasks.
+I originally created it to research if the task of finding an optimal point-based laser pattern for structured light laryngoscopy can be reformulated as a gradient-based optimization problem. 
+That is also why you'll find a lot of Single-Shot Structured Light specific stuff in the code.
+
+This repository accompanies the paper **Fireflies: Domain-specific Structured Light
+Optimization for Medical 3D Reconstruction** published at MICCAI'24.
 This is a joint work of the <a href="https://www.lgdv.tf.fau.de/">Chair of Visual Computing</a> of the Friedrich-Alexander University of Erlangen-Nuremberg and the <a href="https://www.hno-klinik.uk-erlangen.de/phoniatrie/">Phoniatric Division</a> of the University Hospital Erlangen. 
 
-https://github.com/Henningson/Fireflies/assets/27073509/911e57d3-3aab-418d-ad02-e8721cd36785
 
-# Why do we need scene-specific point pattern?
+# Installation
+```
+conda env create -n Fireflies python=3.10
+
+git clone this
+
+install stuff
+```
+
+
+
+![Fireflies](assets/TeaserMitEndoskopenOhneBG.png)
+# Usage
+```
+import mitsuba
+import Firefly
+
+mi_scene = mi.scene(path)
+mi_params = mi.traverse(mi_scene)
+ff_scene = Firefly.Scene(mi_params)
+
+mesh = ff_scene.getMesh("test")
+mesh.translateX(-5, 5)
+mesh.rotateY(-math.pi, math.pi)
+
+firefly_scene.eval()
+for i in range(0, 20):
+    ff_scene.randomize()
+    rendered_scene = mi.render(mi_scene)
+
+
+
+```
+
+# Building your own Scene using Blender
+First, make sure you have the <a href="https://github.com/mitsuba-renderer/mitsuba-blender">Mitsuba Blender Add-On</a> installed.
+The Firefly Blender Add-On can be found in the ```blender``` folder.
+
+
+
+# More Discussion about the Paper
+I think that the eight pages given in the MICCAI format is not enough to properly discuss everything. So here's some further discussion, thoughts and limitations.
+
+## Why do we need scene-specific point pattern?
 The point pattern used in single-shot structured light can generally be regarded as a sampling strategy.
 However, different sampling strategies allow for different observations, for example, here, a general image with different sampling strategies is shown.
 First, a gradient-based sampling, next a blue noise sampling, and lastly a vanilla random sampling.
@@ -23,16 +71,7 @@ However, if we think about specific scenes, we surely can find a pattern that in
 And because its so nice, here's the actual optimization of the point pattern as a video:  
 
 https://github.com/Henningson/Fireflies/assets/27073509/0afc5a79-d0ac-485a-a1f1-75451d0e4ed9
-
-
-
-
-# Building your own Scene
-First, make sure you have the <a href="https://github.com/mitsuba-renderer/mitsuba-blender">Mitsuba Blender Add-On</a> installed.
-The Firefly Blender Add-On can be found in the ```blender``` folder.
-
-
-# Regarding the Epipolar Constraint regularization
+## Regarding the Epipolar Constraint regularization in the Paper
 Our goal is to optimize a pattern that a) is purposely designed for the scene and b) does not contain any ambiguities.
 We can achieve this, by making sure that the epipolar lines inside the operating range of the structured light projector do not overlap.
 Naturally, this would lead to a **very** sparse pattern.
@@ -71,3 +110,15 @@ This can easily be repurposed for other primitive types.
 Here, another example with points:
 
 https://github.com/Henningson/DSLPO/assets/27073509/aedea7b6-8e5e-40c1-85ca-31760bd60a70
+
+On another note, this optimizable measure can give very crude information about the "ambiguityness of a chosen pattern".
+If the measure is 0 then any laser point that is found in the image-space can be directly traced back towards the creating laser.
+
+## Limitations
+Right now the differentiable rasterization code needs a lot of VRAM. THere are some 
+
+
+## PSA
+Since I am now in my last year of my PhD, I won't be really able to further work on this library for the time being.
+Please start pull requests for features, Add-Ons, Bug-fixes, etc. I'd be very happy about any help. :)
+

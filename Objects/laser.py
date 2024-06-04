@@ -79,7 +79,10 @@ class Laser(Camera.Camera):
     ) -> torch.tensor:
 
         # Random points and move into NDC
-        spawned_points = torch.rand([num_beams, 3], device=device)
+        spawned_points = (
+            torch.ones([num_beams, 3], device=device) * 0.5
+            + (torch.rand([num_beams, 3], device=device) - 0.5) / 10.0
+        )
 
         # Set Z to 1
         spawned_points[:, 2] = -1.0
