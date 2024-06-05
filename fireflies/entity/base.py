@@ -2,14 +2,9 @@ import torch
 from typing import List
 
 import fireflies.utils.math
-import fireflies.utils.transforms
 
 
 class Transformable:
-    def fromConfig(config, name, device):
-        # TODO: Implement me
-        pass
-
     def __init__(
         self,
         name: str,
@@ -20,12 +15,15 @@ class Transformable:
         self._device = device
         self._name = name
 
-        self.setTranslationBoundaries(config["translation"])
-        self.setRotationBoundaries(config["rotation"])
-        self.setWorld(config["to_world"])
+        if config is not None:
+            self.setTranslationBoundaries(config["translation"])
+            self.setRotationBoundaries(config["rotation"])
+            self.setWorld(config["to_world"])
 
-        self._randomizable = bool(config["randomizable"])
-        self._relative = bool(config["is_relative"])
+        self._randomizable = (
+            bool(config["randomizable"]) if config is not None else False
+        )
+        self._relative = bool(config["is_relative"]) if config is not None else False
 
         self._parent_name = config["parent_name"] if self._relative else None
         # Is loaded in a second step
@@ -130,7 +128,6 @@ class Transformable:
         # If no parent exists, just return the current translation
         if self._parent is None:
             temp = self._randomized_world.clone()
-            # temp[0:3, 0:3] = temp[0:3, 0:3] @ utilsmath.getYTransform(np.pi, self._device)
             return temp
 
         return self._parent.world() @ self._randomized_world

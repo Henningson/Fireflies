@@ -5,7 +5,6 @@ from pathlib import Path
 import os
 import mitsuba as mi
 
-import utils.transforms
 import utils.math
 
 import torch
@@ -15,58 +14,154 @@ import graphics
 import entity
 import projection
 import utils
+import light
 
 
 class scene:
-    def from_blender(
-        mi_params,
-        mitsuba_xml_path: str,
-        blender_path: str,
-        device: torch.cuda.device = torch.device("cuda"),
-    ):
-        scene_temp = Scene(device)
-
-        scene_temp.mi_xml = scene_temp.getMitsubaXML(
-            os.path.join(base_path, "scene.xml")
-        )
-        scene_temp.firefly_path = os.path.join(base_path, "Firefly")
-        scene_temp.scene_params = mi_params
-
-        scene_temp.base_path = base_path
-
-        scene_temp.init_from_xml()
-        return scene_temp
-
-    def from_mitsuba(mi_params):
-        scene_temp = Scene()
-        scene_temp.init(mi_params)
-        return scene_temp
+    MESH_KEYS = ["mesh", "ply"]
+    CAMERA_KEYS = ["camera", "perspective", "perspectivecamera"]
+    PROJECTOR_KEYS = ["projector"]
+    MAT_KEYS = ["mat, bdsf"]
+    LIGHT_KEYS = ["light", "spot"]
+    TEXTURE_KEYS = ["tex"]
 
     def __init__(
         self,
+        mitsuba_params,
         device: torch.cuda.device = torch.device("cuda"),
     ):
-
-        self.mi_xml = None
-        self.firefly_path = None
-        self.scene_params = None
-
-        self.base_path = None
-
         # Here, only objects are saved, that have a "randomizable"-tag inside the yaml file.
-        self.meshes = {}
-        self.projector = None
-        self.camera = None
-        self.lights = {}
-        self.curves = []
+        self._meshes = []
+        self._projector = None
+        self._camera = None
+        self._lights = []
+        self._curves = []
 
-        self._parent_transformables = []
+        self._transformables = []
 
         self._device = device
 
         self._num_updates = 0
-        self._sequential_animation = True
-        self._steps_per_frame = 1
+        self._sequential_animation = False
+
+        self.mitsuba_params = mitsuba_params
+
+        self.initFromParams(self.mitsuba_params)
+
+    def initFromParams(self, mitsuba_params):
+        # Get all scene keys
+        param_keys = [key.split(".")[0] for key in mitsuba_params.keys()]
+
+        # Remove multiples
+        param_keys = set(param_keys)
+        param_keys = sorted(param_keys)
+
+        for key in param_keys:
+            # Check if its a mesh
+            if any(
+                key.lowercase() in MESH_KEY.lowercase() for MESH_KEY in self.MESH_KEYS
+            ):
+                self.load_mesh(key)
+                continue
+            elif any(
+                key.lowercase() in CAMERA_KEY.lowercase()
+                for CAMERA_KEY in self.CAMERA_KEYS
+            ):
+                self.load_camera(key)
+                continue
+            elif any(
+                key.lowercase() in PROJECTOR_KEY.lowercase()
+                for PROJECTOR_KEY in self.PROJECTOR_KEYS
+            ):
+                self.load_projector(key)
+                continue
+            elif any(
+                key.lowercase() in LIGHT_KEY.lowercase()
+                for LIGHT_KEY in self.LIGHT_KEYS
+            ):
+                self.load_light(key)
+                continue
+            elif any(
+                key.lowercase() in MATERIAL_KEY.lowercase()
+                for MATERIAL_KEY in self.MATERIAL_KEYS
+            ):
+                self.load_material(key)
+                continue
+
+    def load_mesh(self, base_key: str):
+        # Gotta compute the centroid here, as mitsuba does not have a world transform for meshes
+        vertices = torch.tensor(
+            self.mitsuba_params[base_key + ".vertex_positions"], device=self._device
+        ).reshape(-1, 3)
+        centroid = torch.linalg.norm(vertices, dim=0, keepdims=True)
+
+        aligned_vertices = vertices - centroid
+
+        world = torch.eye(4)
+        world[0, 0] = centroid.squeeze()[0]
+        world[1, 1] = centroid.squeeze()[1]
+        world[2, 2] = centroid.squeeze()[2]
+
+        transformable_mesh = entity.Mesh(base_key, aligned_vertices, self._device)
+        transformable_mesh.set_world(world)
+
+        self.meshes.append(transformable_mesh)
+
+    def load_camera(self, base_key: str) -> None:
+        camera_world = torch.tensor(
+            self.mitsuba_params[base_key + ".to_world"], device=self._device
+        ).reshape(4, 4)
+        transformable_camera = entity.Transformable(base_key, None, self._device)
+        transformable_camera.set_world(camera_world)
+        self._camera = transformable_camera
+
+    def load_projector(self, base_key: str) -> None:
+        camera_world = torch.tensor(
+            self.mitsuba_params[base_key + ".to_world"], device=self._device
+        ).reshape(4, 4)
+        transformable_projector = entity.Transformable(base_key, None, self._device)
+        transformable_projector.set_world(camera_world)
+        self._projector = transformable_projector
+
+    def load_light(self, base_key: str) -> None:
+        new_light = light.Light(base_key, device=self._device)
+        to_world = torch.tensor(
+            self.mitsuba_params[base_key + ".to_world"], device=self._device
+        ).reshape(4, 4)
+
+        new_light.set_world(to_world)
+
+        light_keys = [base_key in key for key in self.mitsuba_params.keys()]
+        for key in light_keys:
+            key_without_base = key.split(".")[1:].join()
+            value = self.mitsuba_params[key].torch()
+
+            if len(value) == 1:
+                new_light.add_float_key(key_without_base, value, value)
+            elif len(value) == 3:
+                new_light.add_vec3_key(key_without_base, value, value)
+
+        self._lights.append(new_light)
+
+    def load_material(self, base_key: str) -> None:
+        new_light = light.Light(base_key, device=self._device)
+        to_world = torch.tensor(
+            self.mitsuba_params[base_key + ".to_world"], device=self._device
+        ).reshape(4, 4)
+
+        new_light.set_world(to_world)
+
+        light_keys = [base_key in key for key in self.mitsuba_params.keys()]
+        for key in light_keys:
+            key_without_base = key.split(".")[1:].join()
+            value = self.mitsuba_params[key].torch()
+
+            if len(value) == 1:
+                new_light.add_float_key(key_without_base, value, value)
+            elif len(value) == 3:
+                new_light.add_vec3_key(key_without_base, value, value)
+
+        self._lights.append(new_light)
 
     def train(self) -> None:
         # Set all objects to train mode
@@ -233,8 +328,7 @@ class scene:
                 self.scene_params[key + ".faces"] = mi.UInt32(faces.flatten())
 
             if mesh.animated():
-                if self._num_updates % self._steps_per_frame == 0:
-                    mesh.next_anim_step()
+                mesh.next_anim_step()
 
     def updateCamera(self) -> None:
         if self.camera is None:
@@ -245,7 +339,7 @@ class scene:
 
         # Couldn't find a better way to get this torch tensor into mitsuba Transform4f
         worldMatrix = self.camera.world()
-        worldMatrix[0:3, 0:3] = worldMatrix[0:3, 0:3] @ math_helper.getYTransform(
+        worldMatrix[0:3, 0:3] = worldMatrix[0:3, 0:3] @ utils.math.getYTransform(
             np.pi, self._device
         )
         # worldMatrix[0:3, 0:3] = worldMatrix[0:3, 0:3]
@@ -258,7 +352,7 @@ class scene:
         # TODO: Remove key
         key = "Projector"
         worldMatrix = self.projector.world()
-        worldMatrix[0:3, 0:3] = worldMatrix[0:3, 0:3] @ math_helper.getYTransform(
+        worldMatrix[0:3, 0:3] = worldMatrix[0:3, 0:3] @ utils.math.getYTransform(
             np.pi, self._device
         )
 
