@@ -4,11 +4,11 @@ import random
 from geomdl import NURBS
 from typing import List
 
-from base import Transformable
+import fireflies.entity.base as base
 import fireflies.utils.math
 
 
-class Curve(Transformable):
+class Curve(base.Transformable):
     count = 0.0
 
     def fromObj(path):

@@ -1,1 +1,1 @@
-from base import Light
+from .base import Light

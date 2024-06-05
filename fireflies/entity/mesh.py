@@ -1,21 +1,17 @@
 import os
 import torch
 import random
-import numpy as np
 import pywavefront
-from typing import List
 
 import fireflies.entity.base as base
-
 import fireflies.utils.math
 
 
-class Mesh(base.transformable):
+class Mesh(base.Transformable):
     def __init__(
         self,
         name: str,
         vertex_data: torch.tensor,
-        face_data: torch.tensor,
         device: torch.cuda.device = torch.device("cuda"),
     ):
         super(Mesh, self).__init__(name, device)
@@ -23,7 +19,6 @@ class Mesh(base.transformable):
         self._vertices = vertex_data.to(self._device)
         self._vertices_animation = None
 
-        self._faces = face_data.to(self._device)
         self._scale_min = torch.ones(3, device=self._device)
         self._scale_max = torch.ones(3, device=self._device)
 

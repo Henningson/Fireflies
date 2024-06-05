@@ -15,7 +15,7 @@ class Transformable:
         self._name: str = name
 
         self._randomizable: bool = False
-        
+
         self._parent = None
         self._child = None
 
@@ -41,7 +41,7 @@ class Transformable:
 
     def get_randomized_vec3_attributes(self) -> dict:
         return self._randomized_vec3_attributes
-    
+
     def get_randomized_float_attributes(self) -> dict:
         return self._randomized_float_attributes
 
@@ -116,42 +116,55 @@ class Transformable:
 
     def translate(self, min: torch.tensor, max: torch.tensor) -> None:
         self._randomizable = True
-        self._rotation_min = min.to(self._device)
-        self._rotation_max = max.to(self._device)
+        self._translation_min = min.to(self._device)
+        self._translation_max = max.to(self._device)
 
     def sample_rotation(self) -> torch.tensor:
-        self._sampled_x_rot = fireflies.utils.math.uniformBetweenValues(
-            self.rot_min_x, self.rot_max_x
-        )
-        self._sampled_y_rot = fireflies.utils.math.uniformBetweenValues(
-            self.rot_min_y, self.rot_max_y
+        self._sampled_rotation = fireflies.utils.math.randomBetweenTensors(
+            self._rotation_min, self._rotation_max
         )
 
-        self._sampled_z_rot = fireflies.utils.math.uniformBetweenValues(
-            self.rot_min_z, self.rot_max_z
-            
+        zMat = fireflies.utils.math.getPitchTransform(
+            self._sampled_rotation[2], self._device
+        )
+        yMat = fireflies.utils.math.getYawTransform(
+            self._sampled_rotation[1], self._device
+        )
+        xMat = fireflies.utils.math.getRollTransform(
+            self._sampled_rotation[0], self._device
+        )
 
-        zMat = fireflies.utils.math.getPitchTransform(self._sampled_z_rot, self._device)
-        yMat = fireflies.utils.math.getYawTransform(self._sampled_y_rot, self._device)
-        xMat = fireflies.utils.math.getRollTransform(self._sampled_x_rot, self._device)
-
-        return fireflies.utils.transforms.toMat4x4(zMat @ yMat @ xMat)
+        return fireflies.utils.math.toMat4x4(zMat @ yMat @ xMat)
 
     def sample_translation(self) -> torch.tensor:
-        translationMatrix = torch.eye(4, device=self._device)
-        self.random_translation = fireflies.utils.randomBetweenTensors(
-            self.min_translation, self.max_translation
+        translation = torch.eye(4, device=self._device)
+        self.random_translation = fireflies.utils.math.randomBetweenTensors(
+            self._translation_min, self._translation_max
         )
 
-        translationMatrix[0, 3] = self.random_translation[0]
-        translationMatrix[1, 3] = self.random_translation[1]
-        translationMatrix[2, 3] = self.random_translation[2]
-        self._last_translation = translationMatrix
-        return translationMatrix
+        translation[0, 3] = self.random_translation[0]
+        translation[1, 3] = self.random_translation[1]
+        translation[2, 3] = self.random_translation[2]
+        self._last_translation = translation
+        return translation
+
+    def sample_scale(self) -> torch.tensor:
+        scale = torch.eye(4, device=self._device)
+        self._random_scale = fireflies.utils.math.randomBetweenTensors(
+            self._translation_min, self._translation_max
+        )
+
+        scale[0, 0] = self._random_scale[0]
+        scale[1, 1] = self._random_scale[1]
+        scale[2, 2] = self._random_scale[2]
+        self._last_scale = scale
+        return scale
 
     def randomize(self) -> None:
         self._randomized_world = (
-            self.sample_translation() @ self.sample_rotation() @ self._world
+            (self.sample_translation() * self.sample_scale())
+            @ self.sample_rotation()
+            @ self._world
         )
 
         for key, value in self._float_attributes.items():

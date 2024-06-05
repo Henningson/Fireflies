@@ -1,28 +1,19 @@
-import os
-
-from pathlib import Path
-import os
 import mitsuba as mi
 
-import utils.math
-
 import torch
-import numpy as np
-
-import graphics
-import entity
-import utils
-import emitter
-import material
+import fireflies.entity
+import fireflies.utils
+import fireflies.emitter
+import fireflies.material
 
 
 class Scene:
     MESH_KEYS = ["mesh", "ply"]
-    CAMERA_KEYS = ["camera", "perspective", "perspectivecamera"]
-    PROJECTOR_KEYS = ["projector"]
+    CAM_KEYS = ["camera", "perspective", "perspectivecamera"]
+    PROJ_KEYS = ["projector"]
     MAT_KEYS = ["mat, bdsf"]
     LIGHT_KEYS = ["light", "spot"]
-    TEXTURE_KEYS = ["tex"]
+    TEX_KEYS = ["tex"]
 
     def __init__(
         self,
@@ -48,6 +39,32 @@ class Scene:
 
         self.init_from_params(self._mitsuba_params)
 
+    def mesh_at(self, index: int):
+        return self._meshes[index]
+
+    def meshes(self):
+        return self._meshes
+
+    def get_mesh(self, name: str) -> fireflies.entity.Transformable:
+        for mesh in self._meshes:
+            if mesh.name() == name:
+                return mesh
+
+        return None
+
+    def light_at(self, index: int):
+        return self._lights[index]
+
+    def lights(self):
+        return self._lights
+
+    def get_light(self, name: str) -> fireflies.entity.Transformable:
+        for light in self._lights:
+            if light.name() == name:
+                return light
+
+        return None
+
     def init_from_params(self, mitsuba_params):
         # Get all scene keys
         param_keys = [key.split(".")[0] for key in mitsuba_params.keys()]
@@ -58,33 +75,19 @@ class Scene:
 
         for key in param_keys:
             # Check if its a mesh
-            if any(
-                key.lowercase() in MESH_KEY.lowercase() for MESH_KEY in self.MESH_KEYS
-            ):
+            if any(MESH_KEY.lower() in key.lower() for MESH_KEY in self.MESH_KEYS):
                 self.load_mesh(key)
                 continue
-            elif any(
-                key.lowercase() in CAMERA_KEY.lowercase()
-                for CAMERA_KEY in self._camera_KEYS
-            ):
+            elif any(CAMERA_KEY.lower() in key.lower() for CAMERA_KEY in self.CAM_KEYS):
                 self.load_camera(key)
                 continue
-            elif any(
-                key.lowercase() in PROJECTOR_KEY.lowercase()
-                for PROJECTOR_KEY in self._projector_KEYS
-            ):
+            elif any(PROJ_KEY.lower() in key.lower() for PROJ_KEY in self.PROJ_KEYS):
                 self.load_projector(key)
                 continue
-            elif any(
-                key.lowercase() in LIGHT_KEY.lowercase()
-                for LIGHT_KEY in self.LIGHT_KEYS
-            ):
+            elif any(LIGHT_KEY.lower() in key.lower() for LIGHT_KEY in self.LIGHT_KEYS):
                 self.load_light(key)
                 continue
-            elif any(
-                key.lowercase() in MATERIAL_KEY.lowercase()
-                for MATERIAL_KEY in self.MATERIAL_KEYS
-            ):
+            elif any(MAT_KEY.lower() in key.lower() for MAT_KEY in self.MAT_KEYS):
                 self.load_material(key)
                 continue
 
@@ -102,58 +105,68 @@ class Scene:
         world[1, 1] = centroid.squeeze()[1]
         world[2, 2] = centroid.squeeze()[2]
 
-        transformable_mesh = entity.Mesh(base_key, aligned_vertices, self._device)
+        transformable_mesh = fireflies.entity.Mesh(
+            base_key, aligned_vertices, self._device
+        )
         transformable_mesh.set_world(world)
 
-        self.meshes.append(transformable_mesh)
+        self._meshes.append(transformable_mesh)
 
     def load_camera(self, base_key: str) -> None:
-        camera_world = torch.tensor(
-            self._mitsuba_params[base_key + ".to_world"], device=self._device
-        ).reshape(4, 4)
-        transformable_camera = entity.Transformable(base_key, None, self._device)
-        transformable_camera.set_world(camera_world)
+        to_world = self._mitsuba_params[base_key + ".to_world"].matrix.torch()
+        to_world = to_world.squeeze().to(self._device)
+        transformable_camera = fireflies.entity.Transformable(base_key, self._device)
+        transformable_camera.set_world(to_world)
+
         self._camera = transformable_camera
 
     def load_projector(self, base_key: str) -> None:
-        camera_world = torch.tensor(
-            self._mitsuba_params[base_key + ".to_world"], device=self._device
-        ).reshape(4, 4)
-        transformable_projector = entity.Transformable(base_key, None, self._device)
-        transformable_projector.set_world(camera_world)
+        to_world = self._mitsuba_params[base_key + ".to_world"].matrix.torch()
+        to_world = to_world.squeeze().to(self._device)
+        transformable_projector = fireflies.entity.Transformable(base_key, self._device)
+        transformable_projector.set_world(to_world)
         self._projector = transformable_projector
 
     def load_light(self, base_key: str) -> None:
-        new_light = emitter.Light(base_key, device=self._device)
-        to_world = torch.tensor(
-            self._mitsuba_params[base_key + ".to_world"], device=self._device
-        ).reshape(4, 4)
+        new_light = fireflies.emitter.Light(base_key, device=self._device)
+        to_world = self._mitsuba_params[base_key + ".to_world"].matrix.torch()
+        to_world = to_world.squeeze().to(self._device)
 
         new_light.set_world(to_world)
 
-        light_keys = [base_key in key for key in self._mitsuba_params.keys()]
-        for key in light_keys:
-            key_without_base = key.split(".")[1:].join()
-            value = self._mitsuba_params[key].torch()
+        light_keys = []
+        for key in self._mitsuba_params.keys():
+            if base_key in key:
+                light_keys.append(key)
 
-            if len(value) == 1:
+        for key in light_keys:
+            key_without_base = ".".join(key.split(".")[1:])
+            value = self._mitsuba_params[key]
+
+            if type(value) is float:
                 new_light.add_float_key(key_without_base, value, value)
             elif len(value) == 3:
+                value = value.torch().squeeze()
                 new_light.add_vec3_key(key_without_base, value, value)
 
         self._lights.append(new_light)
 
     def load_material(self, base_key: str) -> None:
-        new_material = material.Material(base_key, device=self._device)
+        new_material = fireflies.material.Material(base_key, device=self._device)
 
-        material_keys = [base_key in key for key in self.mitsuba_params.keys()]
+        material_keys = []
+        for key in self._mitsuba_params.keys():
+            if base_key in key:
+                material_keys.append(key)
+
         for key in material_keys:
-            key_without_base = key.split(".")[1:].join()
+            key_without_base = ".".join(key.split(".")[1:])
             value = self.mitsuba_params[key].torch()
 
-            if len(value) == 1:
+            if type(value) is float:
                 new_material.add_float_key(key_without_base, value, value)
             elif len(value) == 3:
+                value = value.torch().squeeze()
                 new_material.add_vec3_key(key_without_base, value, value)
 
         self._materials.append(new_material)
@@ -179,13 +192,13 @@ class Scene:
                 iterator_child = iterator_child.child()
 
     def load_curve(self, path: str, name: str = "Curve"):
-        curve = utils.importBlenderNurbsObj(path)
-        transformable_curve = entity.Curve(name, curve, self._device)
+        curve = fireflies.utils.importBlenderNurbsObj(path)
+        transformable_curve = fireflies.entity.Curve(name, curve, self._device)
 
         self.curves.append(transformable_curve)
 
     def update_meshes(self) -> None:
-        for mesh in self.meshes:
+        for mesh in self._meshes:
             if not mesh.randomizable():
                 continue
 
@@ -264,29 +277,5 @@ class Scene:
         self.update_materials()
 
         # We finally update the mitsuba scene graph itself
-        self.scene_params.update()
+        self._mitsuba_params.update()
         self._num_updates += 1
-
-
-if __name__ == "__main__":
-    from tqdm import tqdm
-    import matplotlib.pyplot as plt
-    import cv2
-    import graphics.rasterization
-    from argparse import Namespace
-
-    base_path = "Old/scenes/Vocalfold"
-
-    mitsuba_scene = mi.load_file(os.path.join(base_path, "scene.xml"))
-    mitsuba_params = mi.traverse(mitsuba_scene)
-    fireflies_scene = Scene(mitsuba_params)
-
-    for i in tqdm(range(300)):
-        fireflies_scene.randomize()
-
-        render_im = mi.render(mitsuba_scene, spp=10)
-        render_im = torch.clamp(render_im.torch(), 0, 1)[:, :, [2, 1, 0]].cpu().numpy()
-        render_im *= 255
-        render_im = render_im.astype(np.uint8)
-        cv2.imshow("a", render_im)
-        cv2.waitKey(10)
