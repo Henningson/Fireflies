@@ -15,10 +15,10 @@ class Transformable:
         self._name: str = name
 
         self._randomizable: bool = False
-        self._parent_name: str = None
-
+        
         self._parent = None
         self._child = None
+
         self._train = True
 
         self._float_attributes = {}
@@ -33,10 +33,24 @@ class Transformable:
         self._translation_min = torch.zeros(3, dtype=float, device=self._device)
         self._translation_max = torch.zeros(3, dtype=float, device=self._device)
 
+        self._world = None
+        self._randomized_world = None
+
+    def randomizable(self) -> bool:
+        return self._randomizable
+
+    def get_randomized_vec3_attributes(self) -> dict:
+        return self._randomized_vec3_attributes
+    
+    def get_randomized_float_attributes(self) -> dict:
+        return self._randomized_float_attributes
+
     def add_float_key(self, key, value_min: float, value_max: float) -> None:
+        self._randomizable = True
         self._float_attributes[key] = (value_min, value_max)
 
     def add_vec3_key(self, key, min_vec: torch.tensor, max_vec: torch.tensor) -> None:
+        self._randomizable = True
         self._vec3_attributes[key] = (min_vec, max_vec)
 
     def parent(self):
@@ -54,9 +68,6 @@ class Transformable:
     def eval(self) -> None:
         self._train = False
 
-    def parentName(self) -> str:
-        return self._parent_name
-
     def set_world(self, _origin: torch.tensor) -> None:
         self._world = _origin
         self._randomized_world = self._world.clone()
@@ -69,34 +80,42 @@ class Transformable:
         self._child = child
 
     def rotate_x(self, min_rot: float, max_rot: float) -> None:
+        self._randomizable = True
         self._rotation_min[0] = min_rot
         self._rotation_max[0] = max_rot
 
     def rotate_y(self, min_rot: float, max_rot: float) -> None:
+        self._randomizable = True
         self._rotation_min[1] = min_rot
         self._rotation_max[1] = max_rot
 
     def rotate_z(self, min_rot: float, max_rot: float) -> None:
+        self._randomizable = True
         self._rotation_min[2] = min_rot
         self._rotation_max[2] = max_rot
 
     def rotate(self, min: torch.tensor, max: torch.tensor) -> None:
+        self._randomizable = True
         self._rotation_min = min.to(self._device)
         self._rotation_max = max.to(self._device)
 
     def translate_x(self, min_translation: float, max_translation: float) -> None:
+        self._randomizable = True
         self._translation_min[0] = min_translation
         self._translation_max[0] = max_translation
 
     def translate_y(self, min_translation: float, max_translation: float) -> None:
+        self._randomizable = True
         self._translation_min[1] = min_translation
         self._translation_max[1] = max_translation
 
     def translate_z(self, min_translation: float, max_translation: float) -> None:
+        self._randomizable = True
         self._translation_min[2] = min_translation
         self._translation_max[2] = max_translation
 
     def translate(self, min: torch.tensor, max: torch.tensor) -> None:
+        self._randomizable = True
         self._rotation_min = min.to(self._device)
         self._rotation_max = max.to(self._device)
 

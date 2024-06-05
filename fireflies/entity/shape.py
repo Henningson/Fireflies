@@ -2,64 +2,31 @@ import torch
 import numpy as np
 from typing import List
 
-import mesh
-
+from mesh import Mesh
 import fireflies.utils.math
-import fireflies.utils.transforms
 
 
-class ShapeModel(mesh.Mesh):
+@NotImplementedError
+class ShapeModel(Mesh):
     def __init__(
         self,
         name: str,
-        vertex_data: List[float],
-        config: dict,
+        vertex_data: torch.tensor,
+        face_data: torch.tensor,
         device: torch.cuda.device = torch.device("cuda"),
-        base_path: str = None,
-        sequential_animation: bool = False,
     ):
-
+        super(Mesh, self).__init__(name, vertex_data, face_data, device)
         self._device = device
         self._name = name
 
-        self.setTranslationBoundaries(config["translation"])
-        self.setRotationBoundaries(config["rotation"])
-        self.setWorld(config["to_world"])
-        self._world = self._world @ fireflies.utils.transforms.toMat4x4(
-            fireflies.utils.math.getXTransform(np.pi * 0.5, self._device)
-        )
-        self._randomized_world = self._world.clone()
-
-        self._randomizable = bool(config["randomizable"])
-        self._relative = bool(config["is_relative"])
-
-        self._parent_name = config["parent_name"] if self._relative else None
-        # Is loaded in a second step
-        self._parent = None
-        self._child = None
-
-        self.setVertices(vertex_data)
-        self.setScaleBoundaries(config["scale"])
-        self._animated = bool(config["animated"])
-        self._sequential_animation = sequential_animation
-
-        self._animation_index = 0
-
-        self.setVertices(vertex_data)
-        self.setScaleBoundaries(config["scale"])
-        self._stddev_range = config["stddev_range"]
-        self._shape_layer = None
-        self._model_params = {}
-        self._train = True
-
-    def loadAnimation(self):
+    def load_animation(self):
         return None
 
-    def modelParmas(self) -> dict:
+    def get_model_params(self) -> dict:
         return self._model_params
 
-    def setModelParams(self, dict: dict) -> None:
+    def set_model_params(self, dict: dict) -> None:
         assert NotImplementedError
 
-    def getVertexData(self):
+    def get_vertices(self):
         assert NotImplementedError

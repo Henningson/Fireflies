@@ -37,18 +37,22 @@ class Mesh(base.transformable):
         self._time_delta = 0.01
 
     def scale_x(self, min_scale: float, max_scale: float) -> None:
+        self._randomizable = True
         self._translation_min[0] = min_scale
         self._translation_max[0] = max_scale
 
     def scale_y(self, min_scale: float, max_scale: float) -> None:
+        self._randomizable = True
         self._translation_min[1] = min_scale
         self._translation_max[1] = max_scale
 
     def scale_z(self, min_scale: float, max_scale: float) -> None:
+        self._randomizable = True
         self._translation_min[2] = min_scale
         self._translation_max[2] = max_scale
 
     def scale(self, min: torch.tensor, max: torch.tensor) -> None:
+        self._randomizable = True
         self._scale_min = min.to(self._device)
         self._scale_max = max.to(self._device)
 
@@ -130,9 +134,6 @@ class Mesh(base.transformable):
 
         self.add_animation(torch.stack(animation_data))
         self._animated = True
-
-    def next_anim_step(self) -> None:
-        self._animation_index += 1
 
     def sample_animation(self):
         if not self._animated:

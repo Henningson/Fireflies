@@ -7,7 +7,6 @@ import fireflies.entity.base as base
 import shape
 
 import fireflies.utils.math
-import fireflies.utils.transforms
 
 
 class FlameShapeModel(shape.ShapeModel):
