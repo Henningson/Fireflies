@@ -4,12 +4,11 @@ import random
 from geomdl import NURBS
 from typing import List
 
-import fireflies.entity.base as base
+from base import Transformable
 import fireflies.utils.math
-import fireflies.utils.transforms
 
 
-class curve(base.transformable):
+class Curve(Transformable):
     count = 0.0
 
     def fromObj(path):
@@ -20,13 +19,11 @@ class curve(base.transformable):
         self,
         name: str,
         curve: NURBS.Curve,
-        config: dict,
         device: torch.cuda.device = torch.device("cuda"),
     ):
-        base.transformable.__init__(self, name, config, device)
+        super(Curve, self).__init__(self, name, device)
 
         self._curve = curve
-        self._curve.ctrlpts = self.convertToLocal(self._curve.ctrlpts)
         self.curve_epsilon = 0.05
 
         self.curve_delta = self.curve_epsilon
@@ -45,13 +42,10 @@ class curve(base.transformable):
         self._continuous = True
         self._curve_delta = self.eval_interval_start
 
-    def convertToLocal(self, controlpoints: List[List[float]]) -> List[List[float]]:
-        return controlpoints
-
     def setContinuous(self, continuous: bool) -> None:
         self._continuous = continuous
 
-    def sampleRotation(self) -> torch.tensor:
+    def sample_rotation(self) -> torch.tensor:
         t = self.curve_delta
         t_new = self.curve_delta + 0.001
 
@@ -75,13 +69,13 @@ class curve(base.transformable):
             )
         )
 
-    def sampleTranslation(self) -> torch.tensor:
+    def sample_translation(self) -> torch.tensor:
         translationMatrix = torch.eye(4, device=self._device)
         translation = self._curve.evaluate_single(self.curve_delta)
 
-        translationMatrix[0, 3] = -translation[0]
+        translationMatrix[0, 3] = translation[0]
         translationMatrix[1, 3] = translation[1]
-        translationMatrix[2, 3] = -translation[2]
+        translationMatrix[2, 3] = translation[2]
 
         return translationMatrix
 
@@ -97,5 +91,5 @@ class curve(base.transformable):
                 self.curve_delta = self.eval_interval_start
 
         self._randomized_world = (
-            self.sampleTranslation() @ self.sampleRotation() @ self._world
+            self.sample_translation() @ self.sample_rotation() @ self._world
         )

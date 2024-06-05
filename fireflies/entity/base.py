@@ -8,31 +8,36 @@ class Transformable:
     def __init__(
         self,
         name: str,
-        config: dict,
         device: torch.cuda.device = torch.device("cuda"),
     ):
 
-        self._device = device
-        self._name = name
+        self._device: torch.cuda.device = device
+        self._name: str = name
 
-        if config is not None:
-            self.setTranslationBoundaries(config["translation"])
-            self.setRotationBoundaries(config["rotation"])
-            self.setWorld(config["to_world"])
+        self._randomizable: bool = False
+        self._parent_name: str = None
 
-        self._randomizable = (
-            bool(config["randomizable"]) if config is not None else False
-        )
-        self._relative = bool(config["is_relative"]) if config is not None else False
-
-        self._parent_name = config["parent_name"] if self._relative else None
-        # Is loaded in a second step
         self._parent = None
         self._child = None
         self._train = True
-        self.xRot = 0.0
-        self.yRot = 0.0
-        self.zRot = 0.0
+
+        self._float_attributes = {}
+        self._randomized_float_attributes = {}
+
+        self._vec3_attributes = {}
+        self._randomized_vec3_attributes = {}
+
+        self._rotation_min = torch.zeros(3, dtype=float, device=self._device)
+        self._rotation_max = torch.zeros(3, dtype=float, device=self._device)
+
+        self._translation_min = torch.zeros(3, dtype=float, device=self._device)
+        self._translation_max = torch.zeros(3, dtype=float, device=self._device)
+
+    def add_float_key(self, key, value_min: float, value_max: float) -> None:
+        self._float_attributes[key] = (value_min, value_max)
+
+    def add_vec3_key(self, key, min_vec: torch.tensor, max_vec: torch.tensor) -> None:
+        self._vec3_attributes[key] = (min_vec, max_vec)
 
     def parent(self):
         return self._parent
@@ -52,8 +57,8 @@ class Transformable:
     def parentName(self) -> str:
         return self._parent_name
 
-    def setWorld(self, _origin: List[List[float]]) -> None:
-        self._world = torch.tensor(_origin, device=self._device)
+    def set_world(self, _origin: torch.tensor) -> None:
+        self._world = _origin
         self._randomized_world = self._world.clone()
 
     def setParent(self, parent) -> None:
@@ -63,66 +68,85 @@ class Transformable:
     def setChild(self, child) -> None:
         self._child = child
 
-    def setRotationBoundaries(self, rotation: dict) -> None:
-        self.rot_min_x = rotation["min_x"]
-        self.rot_max_x = rotation["max_x"]
-        self.rot_min_y = rotation["min_y"]
-        self.rot_max_y = rotation["max_y"]
-        self.rot_min_z = rotation["min_z"]
-        self.rot_max_z = rotation["max_z"]
+    def rotate_x(self, min_rot: float, max_rot: float) -> None:
+        self._rotation_min[0] = min_rot
+        self._rotation_max[0] = max_rot
 
-    def setTranslationBoundaries(self, translation: dict) -> None:
-        self.min_translation = torch.tensor(
-            [translation["min_x"], translation["min_y"], translation["min_z"]],
-            device=self._device,
-        )
-        self.max_translation = torch.tensor(
-            [translation["max_x"], translation["max_y"], translation["max_z"]],
-            device=self._device,
-        )
+    def rotate_y(self, min_rot: float, max_rot: float) -> None:
+        self._rotation_min[1] = min_rot
+        self._rotation_max[1] = max_rot
 
-    def sampleRotation(self) -> torch.tensor:
-        self.test = 0.0
+    def rotate_z(self, min_rot: float, max_rot: float) -> None:
+        self._rotation_min[2] = min_rot
+        self._rotation_max[2] = max_rot
 
-        self.xRot = fireflies.utils.math.uniformBetweenValues(
+    def rotate(self, min: torch.tensor, max: torch.tensor) -> None:
+        self._rotation_min = min.to(self._device)
+        self._rotation_max = max.to(self._device)
+
+    def translate_x(self, min_translation: float, max_translation: float) -> None:
+        self._translation_min[0] = min_translation
+        self._translation_max[0] = max_translation
+
+    def translate_y(self, min_translation: float, max_translation: float) -> None:
+        self._translation_min[1] = min_translation
+        self._translation_max[1] = max_translation
+
+    def translate_z(self, min_translation: float, max_translation: float) -> None:
+        self._translation_min[2] = min_translation
+        self._translation_max[2] = max_translation
+
+    def translate(self, min: torch.tensor, max: torch.tensor) -> None:
+        self._rotation_min = min.to(self._device)
+        self._rotation_max = max.to(self._device)
+
+    def sample_rotation(self) -> torch.tensor:
+        self._sampled_x_rot = fireflies.utils.math.uniformBetweenValues(
             self.rot_min_x, self.rot_max_x
         )
-        self.yRot = fireflies.utils.math.uniformBetweenValues(
+        self._sampled_y_rot = fireflies.utils.math.uniformBetweenValues(
             self.rot_min_y, self.rot_max_y
         )
 
-        if self._child is not None:
-            self.zRot = self.zRot + (6.282 / 100)
-        else:
-            self.zRot = fireflies.utils.math.uniformBetweenValues(
-                self.rot_min_z, self.rot_max_z
-            )
+        self._sampled_z_rot = fireflies.utils.math.uniformBetweenValues(
+            self.rot_min_z, self.rot_max_z
+            
 
-        zMat = fireflies.utils.math.getPitchTransform(self.zRot, self._device)
-        yMat = fireflies.utils.math.getYawTransform(self.yRot, self._device)
-        xMat = fireflies.utils.math.getRollTransform(self.xRot, self._device)
+        zMat = fireflies.utils.math.getPitchTransform(self._sampled_z_rot, self._device)
+        yMat = fireflies.utils.math.getYawTransform(self._sampled_y_rot, self._device)
+        xMat = fireflies.utils.math.getRollTransform(self._sampled_x_rot, self._device)
 
         return fireflies.utils.transforms.toMat4x4(zMat @ yMat @ xMat)
 
-    def sampleTranslation(self) -> torch.tensor:
+    def sample_translation(self) -> torch.tensor:
         translationMatrix = torch.eye(4, device=self._device)
         self.random_translation = fireflies.utils.randomBetweenTensors(
             self.min_translation, self.max_translation
         )
 
         translationMatrix[0, 3] = self.random_translation[0]
-        translationMatrix[1, 3] = -self.random_translation[2]
-        translationMatrix[2, 3] = self.random_translation[1]
+        translationMatrix[1, 3] = self.random_translation[1]
+        translationMatrix[2, 3] = self.random_translation[2]
         self._last_translation = translationMatrix
         return translationMatrix
 
     def randomize(self) -> None:
         self._randomized_world = (
-            self.sampleTranslation() @ self.sampleRotation() @ self._world
+            self.sample_translation() @ self.sample_rotation() @ self._world
         )
 
+        for key, value in self._float_attributes.items():
+            self._randomized_float_attributes[key] = (
+                fireflies.utils.math.uniformBetweenValues(value[0], value[1])
+            )
+
+        for key, value in self._vec3_attributes.items():
+            self._randomized_float_attributes[key] = (
+                fireflies.utils.math.randomBetweenTensors(value[0], value[1])
+            )
+
     def relative(self) -> None:
-        return self._relative
+        return self._parent is not None
 
     def world(self) -> torch.tensor:
         # If no parent exists, just return the current translation

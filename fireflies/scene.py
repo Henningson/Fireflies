@@ -15,9 +15,10 @@ import entity
 import projection
 import utils
 import light
+import material
 
 
-class scene:
+class Scene:
     MESH_KEYS = ["mesh", "ply"]
     CAMERA_KEYS = ["camera", "perspective", "perspectivecamera"]
     PROJECTOR_KEYS = ["projector"]
@@ -36,6 +37,7 @@ class scene:
         self._camera = None
         self._lights = []
         self._curves = []
+        self._materials = []
 
         self._transformables = []
 
@@ -144,24 +146,19 @@ class scene:
         self._lights.append(new_light)
 
     def load_material(self, base_key: str) -> None:
-        new_light = light.Light(base_key, device=self._device)
-        to_world = torch.tensor(
-            self.mitsuba_params[base_key + ".to_world"], device=self._device
-        ).reshape(4, 4)
+        new_material = material.Material(base_key, device=self._device)
 
-        new_light.set_world(to_world)
-
-        light_keys = [base_key in key for key in self.mitsuba_params.keys()]
-        for key in light_keys:
+        material_keys = [base_key in key for key in self.mitsuba_params.keys()]
+        for key in material_keys:
             key_without_base = key.split(".")[1:].join()
             value = self.mitsuba_params[key].torch()
 
             if len(value) == 1:
-                new_light.add_float_key(key_without_base, value, value)
+                new_material.add_float_key(key_without_base, value, value)
             elif len(value) == 3:
-                new_light.add_vec3_key(key_without_base, value, value)
+                new_material.add_vec3_key(key_without_base, value, value)
 
-        self._lights.append(new_light)
+        self._materials.append(new_material)
 
     def train(self) -> None:
         # Set all objects to train mode
