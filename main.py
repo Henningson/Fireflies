@@ -17,17 +17,20 @@ def render_to_opencv(render):
 
 if __name__ == "__main__":
 
-    base_path = "Old/scenes/Vocalfold"
+    path = "examples/scenes/rotating_cube/rotating_cube.xml"
 
-    mitsuba_scene = mi.load_file(os.path.join(base_path, "scene.xml"))
+    mitsuba_scene = mi.load_file(path)
     mitsuba_params = mi.traverse(mitsuba_scene)
     fireflies_scene = fireflies.Scene(mitsuba_params)
 
-    fireflies_scene.mesh_at(0).scale_y(0.0, 2.0)
+    fireflies_scene.mesh_at(0).rotate_z(-np.pi, np.pi)
 
-    for i in range(300):
+    fireflies_scene.train()
+    for i in range(100):
         fireflies_scene.randomize()
 
         render = mi.render(mitsuba_scene, spp=10)
+
         cv2.imshow("a", render_to_opencv(render))
+        cv2.imwrite(f"im/{i:05d}.png", render_to_opencv(render))
         cv2.waitKey(10)

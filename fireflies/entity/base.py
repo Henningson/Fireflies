@@ -38,6 +38,9 @@ class Transformable:
 
         self._centroid_mat = torch.zeros((4, 4), device=self._device)
 
+        self._eval_delta = 0.01
+        self._num_updates = 0
+
     def randomizable(self) -> bool:
         return self._randomizable
 
@@ -130,9 +133,14 @@ class Transformable:
         self._translation_max = max.to(self._device)
 
     def sample_rotation(self) -> torch.tensor:
-        self._sampled_rotation = fireflies.utils.math.randomBetweenTensors(
-            self._rotation_min, self._rotation_max
-        )
+        if self._train:
+            self._sampled_rotation = fireflies.utils.math.randomBetweenTensors(
+                self._rotation_min, self._rotation_max
+            )
+        else:
+            self._sampled_rotation = self._rotation_min + (
+                self._num_updates % 100
+            ) * self._eval_delta * (self._rotation_max - self._rotation_min)
 
         zMat = fireflies.utils.math.getPitchTransform(
             self._sampled_rotation[2], self._device
@@ -148,19 +156,30 @@ class Transformable:
 
     def sample_translation(self) -> torch.tensor:
         translation = torch.eye(4, device=self._device)
-        self.random_translation = fireflies.utils.math.randomBetweenTensors(
-            self._translation_min, self._translation_max
-        )
 
-        translation[0, 3] = self.random_translation[0]
-        translation[1, 3] = self.random_translation[1]
-        translation[2, 3] = self.random_translation[2]
+        if self._train:
+            self._random_translation = fireflies.utils.math.randomBetweenTensors(
+                self._translation_min, self._translation_max
+            )
+        else:
+            self._random_translation = self._translation_min + (
+                self._num_updates % 100
+            ) * self._eval_delta * (self._translation_max - self._translation_min)
+
+        print(self._num_updates)
+
+        translation[0, 3] = self._random_translation[0]
+        translation[1, 3] = self._random_translation[1]
+        translation[2, 3] = self._random_translation[2]
         self._last_translation = translation
         return translation
 
     def randomize(self) -> None:
         if not self.randomizable():
             return
+
+        if not self._train:
+            self._num_updates += 1
 
         self._randomized_world = (
             (self.sample_translation() + self._centroid_mat)

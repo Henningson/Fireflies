@@ -125,10 +125,6 @@ class Scene:
 
     def load_light(self, base_key: str) -> None:
         new_light = fireflies.emitter.Light(base_key, device=self._device)
-        to_world = self._mitsuba_params[base_key + ".to_world"].matrix.torch()
-        to_world = to_world.squeeze().to(self._device)
-
-        new_light.set_world(to_world)
 
         light_keys = []
         for key in self._mitsuba_params.keys():
@@ -183,8 +179,11 @@ class Scene:
         for material in self._materials:
             material.train()
 
-        self._camera.train()
-        self._projector.train()
+        if self._camera is not None:
+            self._camera.train()
+
+        if self._projector is not None:
+            self._projector.train()
 
     def eval(self) -> None:
         # We first randomize all of our objects
@@ -197,8 +196,11 @@ class Scene:
         for material in self._materials:
             material.eval()
 
-        self._camera.eval()
-        self._projector.eval()
+        if self._camera is not None:
+            self._camera.eval()
+
+        if self._projector is not None:
+            self._projector.eval()
 
     def load_curve(self, path: str, name: str = "Curve"):
         curve = fireflies.utils.importBlenderNurbsObj(path)
@@ -287,13 +289,20 @@ class Scene:
         for material in self._materials:
             material.randomize()
 
-        self._camera.randomize()
-        self._projector.randomize()
+        if self._camera is not None:
+            self._camera.randomize()
+
+        if self._projector is not None:
+            self._projector.randomize()
 
         # And then copy the updates to the mitsuba parameters
         self.update_meshes()
-        self.update_camera()
-        self.update_projector()
+
+        if self._camera is not None:
+            self.update_camera()
+
+        if self._projector is not None:
+            self.update_projector()
         self.update_lights()
         self.update_materials()
 

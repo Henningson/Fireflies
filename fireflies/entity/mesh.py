@@ -63,14 +63,14 @@ class Mesh(base.Transformable):
         self._animated = True
 
     def train(self) -> None:
-        base.transformable.train(self)
+        self._train = True
         self._sequential_animation = False
 
         if self._animated:
             self.loadAnimation(self._base_path, self._name)
 
     def eval(self) -> None:
-        base.transformable.eval(self)
+        self._train = False
         self._sequential_animation = True
         if self._animated:
             eval_path = f"{self._name}_eval"
@@ -84,9 +84,16 @@ class Mesh(base.Transformable):
 
     def sample_scale(self) -> torch.tensor:
         scale_matrix = torch.eye(4, device=self._device)
-        random_scale = fireflies.utils.math.randomBetweenTensors(
-            self._scale_min, self._scale_max
-        )
+
+        random_scale = None
+        if self._train:
+            random_scale = fireflies.utils.math.randomBetweenTensors(
+                self._scale_min, self._scale_max
+            )
+        else:
+            random_scale = self._scale_min + (
+                self._num_updates % 100
+            ) * self._eval_delta * (self._scale_max - self._scale_min)
 
         scale_matrix[0, 0] = random_scale[0]
         scale_matrix[1, 1] = random_scale[1]
@@ -96,6 +103,9 @@ class Mesh(base.Transformable):
     def randomize(self) -> None:
         if not self.randomizable():
             return
+
+        if not self._train:
+            self._num_updates += 1
 
         self._randomized_world = (
             (self.sample_translation() + self._centroid_mat)
