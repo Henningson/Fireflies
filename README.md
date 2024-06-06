@@ -35,15 +35,16 @@ mesh.translateX(-5, 5)
 mesh.rotateY(-math.pi, math.pi)
 
 firefly_scene.eval()
+#firefly_scene.train() generates uniformly sampled results seen on the right.
 for i in range(0, 20):
     ff_scene.randomize()
     rendered_scene = mi.render(mi_scene)
 ```
 
-# Blender Script
-First, make sure you have the <a href="https://github.com/mitsuba-renderer/mitsuba-blender">Mitsuba Blender Add-On</a> installed.
-The Firefly Blender script can be found in the ```blender``` folder.
-This is a very rudimentary script that lets you define position constraints using Blender itself, as well as export camera paths along curves.
+<p align="center">
+<img src="https://github.com/Henningson/Fireflies/assets/27073509/78e1af22-d526-4130-adc6-d3b30c2cc4d9"/>
+<img src="https://github.com/Henningson/Fireflies/assets/27073509/69631612-e7f6-4973-8afc-cada9febb680"/>
+</p>
 
 # Render Gallery
 <p align="center">
