@@ -46,6 +46,10 @@ for i in range(0, 20):
 
 </p>
 
+# Examples
+A bunch of different examples can be found in the examples folder.
+They span from defining a simple scene to training neural networks and optimizing point-based structured light pattern.
+
 # Render Gallery
 <p align="center">
 <img src="https://github.com/Henningson/Fireflies/assets/27073509/dce49ad1-1d22-45b3-a544-2e1fbcd7b30c" height="150"/>
