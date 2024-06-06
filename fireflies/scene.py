@@ -11,7 +11,7 @@ class Scene:
     MESH_KEYS = ["mesh", "ply"]
     CAM_KEYS = ["camera", "perspective", "perspectivecamera"]
     PROJ_KEYS = ["projector"]
-    MAT_KEYS = ["mat, bdsf"]
+    MAT_KEYS = ["mat, bsdf"]
     LIGHT_KEYS = ["light", "spot"]
     TEX_KEYS = ["tex"]
 
@@ -96,19 +96,14 @@ class Scene:
         vertices = torch.tensor(
             self._mitsuba_params[base_key + ".vertex_positions"], device=self._device
         ).reshape(-1, 3)
-        centroid = torch.linalg.norm(vertices, dim=0, keepdims=True)
+        centroid = vertices.sum(dim=0, keepdim=True) / vertices.shape[0]
 
         aligned_vertices = vertices - centroid
-
-        world = torch.eye(4)
-        world[0, 0] = centroid.squeeze()[0]
-        world[1, 1] = centroid.squeeze()[1]
-        world[2, 2] = centroid.squeeze()[2]
 
         transformable_mesh = fireflies.entity.Mesh(
             base_key, aligned_vertices, self._device
         )
-        transformable_mesh.set_world(world)
+        transformable_mesh.set_centroid(centroid)
 
         self._meshes.append(transformable_mesh)
 
@@ -117,7 +112,7 @@ class Scene:
         to_world = to_world.squeeze().to(self._device)
         transformable_camera = fireflies.entity.Transformable(base_key, self._device)
         transformable_camera.set_world(to_world)
-
+        transformable_camera.set_randomizable(False)
         self._camera = transformable_camera
 
     def load_projector(self, base_key: str) -> None:
@@ -125,6 +120,7 @@ class Scene:
         to_world = to_world.squeeze().to(self._device)
         transformable_projector = fireflies.entity.Transformable(base_key, self._device)
         transformable_projector.set_world(to_world)
+        transformable_projector.set_randomizable(False)
         self._projector = transformable_projector
 
     def load_light(self, base_key: str) -> None:
@@ -143,12 +139,16 @@ class Scene:
             key_without_base = ".".join(key.split(".")[1:])
             value = self._mitsuba_params[key]
 
-            if type(value) is float:
+            if type(value) == mi.Transform4f:
+                continue
+
+            if isinstance(value, mi.Float) or isinstance(value, float):
                 new_light.add_float_key(key_without_base, value, value)
             elif len(value) == 3:
                 value = value.torch().squeeze()
                 new_light.add_vec3_key(key_without_base, value, value)
 
+        new_light.set_randomizable(False)
         self._lights.append(new_light)
 
     def load_material(self, base_key: str) -> None:
@@ -163,33 +163,42 @@ class Scene:
             key_without_base = ".".join(key.split(".")[1:])
             value = self.mitsuba_params[key].torch()
 
-            if type(value) is float:
+            if isinstance(value, mi.Float) or isinstance(value, float):
                 new_material.add_float_key(key_without_base, value, value)
             elif len(value) == 3:
                 value = value.torch().squeeze()
                 new_material.add_vec3_key(key_without_base, value, value)
 
+        new_material.set_randomizable(False)
         self._materials.append(new_material)
 
     def train(self) -> None:
-        # Set all objects to train mode
-        for transformable in self._parent_transformables:
-            transformable.train()
+        # We first randomize all of our objects
+        for mesh in self._meshes:
+            mesh.train()
 
-            iterator_child = transformable.child()
-            while iterator_child is not None:
-                iterator_child.train()
-                iterator_child = iterator_child.child()
+        for light in self._lights:
+            light.train()
+
+        for material in self._materials:
+            material.train()
+
+        self._camera.train()
+        self._projector.train()
 
     def eval(self) -> None:
-        # Set all objects to eval mode
-        for transformable in self._parent_transformables:
-            transformable.eval()
+        # We first randomize all of our objects
+        for mesh in self._meshes:
+            mesh.eval()
 
-            iterator_child = transformable.child()
-            while iterator_child is not None:
-                iterator_child.eval()
-                iterator_child = iterator_child.child()
+        for light in self._lights:
+            light.eval()
+
+        for material in self._materials:
+            material.eval()
+
+        self._camera.eval()
+        self._projector.eval()
 
     def load_curve(self, path: str, name: str = "Curve"):
         curve = fireflies.utils.importBlenderNurbsObj(path)
@@ -228,7 +237,7 @@ class Scene:
             if not light.randomizable():
                 continue
 
-            self.scene_params[key + ".to_world"] = mi.Transform4f(
+            self._mitsuba_params[light.name() + ".to_world"] = mi.Transform4f(
                 light.world().tolist()
             )
 
@@ -236,10 +245,16 @@ class Scene:
             vec3_dict = light.get_randomized_vec3_attributes()
 
             for key, value in float_dict.items():
-                self._mitsuba_params[light.name() + "." + key] = value
+                joined_key = light.name() + "." + key
+                temp_type = type(self._mitsuba_params[joined_key])
+                self._mitsuba_params[joined_key] = temp_type(value)
 
             for key, value in vec3_dict.items():
-                self._mitsuba_params[light.name() + "." + key] = value
+                joined_key = light.name() + "." + key
+                temp_type = type(self._mitsuba_params[joined_key])
+                self._mitsuba_params[light.name() + "." + key] = temp_type(
+                    value.tolist()
+                )
 
     def update_materials(self) -> None:
         for material in self._materials:
@@ -250,10 +265,16 @@ class Scene:
             vec3_dict = material.get_randomized_vec3_attributes()
 
             for key, value in float_dict.items():
-                self._mitsuba_params[material.name() + "." + key] = value
+                joined_key = material.name() + "." + key
+                temp_type = type(self._mitsuba_params[joined_key])
+                self._mitsuba_params[joined_key] = temp_type(value)
 
             for key, value in vec3_dict.items():
-                self._mitsuba_params[material.name() + "." + key] = value
+                joined_key = material.name() + "." + key
+                temp_type = type(self._mitsuba_params[joined_key])
+                self._mitsuba_params[material.name() + "." + key] = temp_type(
+                    value.tolist()
+                )
 
     def randomize(self) -> None:
         # We first randomize all of our objects

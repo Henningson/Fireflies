@@ -33,18 +33,18 @@ class Mesh(base.Transformable):
 
     def scale_x(self, min_scale: float, max_scale: float) -> None:
         self._randomizable = True
-        self._translation_min[0] = min_scale
-        self._translation_max[0] = max_scale
+        self._scale_min[0] = min_scale
+        self._scale_max[0] = max_scale
 
     def scale_y(self, min_scale: float, max_scale: float) -> None:
         self._randomizable = True
-        self._translation_min[1] = min_scale
-        self._translation_max[1] = max_scale
+        self._scale_min[1] = min_scale
+        self._scale_max[1] = max_scale
 
     def scale_z(self, min_scale: float, max_scale: float) -> None:
         self._randomizable = True
-        self._translation_min[2] = min_scale
-        self._translation_max[2] = max_scale
+        self._scale_min[2] = min_scale
+        self._scale_max[2] = max_scale
 
     def scale(self, min: torch.tensor, max: torch.tensor) -> None:
         self._randomizable = True
@@ -85,7 +85,7 @@ class Mesh(base.Transformable):
     def sample_scale(self) -> torch.tensor:
         scale_matrix = torch.eye(4, device=self._device)
         random_scale = fireflies.utils.math.randomBetweenTensors(
-            self.min_scale, self.max_scale
+            self._scale_min, self._scale_max
         )
 
         scale_matrix[0, 0] = random_scale[0]
@@ -94,8 +94,14 @@ class Mesh(base.Transformable):
         return scale_matrix
 
     def randomize(self) -> None:
+        if not self.randomizable():
+            return
+
         self._randomized_world = (
-            self.sampleTranslation() @ self.sampleRotation() @ self.sampleScale()
+            (self.sample_translation() + self._centroid_mat)
+            @ self.sample_rotation()
+            @ self.sample_scale()
+            @ self._world
         )
 
     def faces(self) -> torch.tensor:
@@ -109,9 +115,7 @@ class Mesh(base.Transformable):
         temp_vertex = self.sample_animation() if self._animated else self._vertices
 
         # Transform by world transform
-        temp_vertex = fireflies.utils.transforms.transform_points(
-            temp_vertex, self.world()
-        )
+        temp_vertex = fireflies.utils.math.transform_points(temp_vertex, self.world())
 
         return temp_vertex
 

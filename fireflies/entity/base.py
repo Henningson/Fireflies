@@ -27,17 +27,27 @@ class Transformable:
         self._vec3_attributes = {}
         self._randomized_vec3_attributes = {}
 
-        self._rotation_min = torch.zeros(3, dtype=float, device=self._device)
-        self._rotation_max = torch.zeros(3, dtype=float, device=self._device)
+        self._rotation_min = torch.zeros(3, device=self._device)
+        self._rotation_max = torch.zeros(3, device=self._device)
 
-        self._translation_min = torch.zeros(3, dtype=float, device=self._device)
-        self._translation_max = torch.zeros(3, dtype=float, device=self._device)
+        self._translation_min = torch.zeros(3, device=self._device)
+        self._translation_max = torch.zeros(3, device=self._device)
 
-        self._world = None
-        self._randomized_world = None
+        self._world = torch.eye(4, device=self._device)
+        self._randomized_world = torch.eye(4, device=self._device)
+
+        self._centroid_mat = torch.zeros((4, 4), device=self._device)
 
     def randomizable(self) -> bool:
         return self._randomizable
+
+    def set_centroid(self, centroid: torch.tensor) -> None:
+        self._centroid_mat[0, 3] = centroid.squeeze()[0]
+        self._centroid_mat[1, 3] = centroid.squeeze()[1]
+        self._centroid_mat[2, 3] = centroid.squeeze()[2]
+
+    def set_randomizable(self, randomizable: bool) -> None:
+        self._randomizable = randomizable
 
     def get_randomized_vec3_attributes(self) -> dict:
         return self._randomized_vec3_attributes
@@ -148,21 +158,12 @@ class Transformable:
         self._last_translation = translation
         return translation
 
-    def sample_scale(self) -> torch.tensor:
-        scale = torch.eye(4, device=self._device)
-        self._random_scale = fireflies.utils.math.randomBetweenTensors(
-            self._translation_min, self._translation_max
-        )
-
-        scale[0, 0] = self._random_scale[0]
-        scale[1, 1] = self._random_scale[1]
-        scale[2, 2] = self._random_scale[2]
-        self._last_scale = scale
-        return scale
-
     def randomize(self) -> None:
+        if not self.randomizable():
+            return
+
         self._randomized_world = (
-            (self.sample_translation() * self.sample_scale())
+            (self.sample_translation() + self._centroid_mat)
             @ self.sample_rotation()
             @ self._world
         )
@@ -173,7 +174,7 @@ class Transformable:
             )
 
         for key, value in self._vec3_attributes.items():
-            self._randomized_float_attributes[key] = (
+            self._randomized_vec3_attributes[key] = (
                 fireflies.utils.math.randomBetweenTensors(value[0], value[1])
             )
 
@@ -183,8 +184,7 @@ class Transformable:
     def world(self) -> torch.tensor:
         # If no parent exists, just return the current translation
         if self._parent is None:
-            temp = self._randomized_world.clone()
-            return temp
+            return self._randomized_world.clone()
 
         return self._parent.world() @ self._randomized_world
 
