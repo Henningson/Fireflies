@@ -23,27 +23,27 @@ install stuff
 ![Datasets](https://github.com/Henningson/Fireflies/assets/27073509/9c617876-356a-420d-8632-cf4c286d6778)
 # Usage
 ```
-import mitsuba
-import fireflies
+import mitsuba as mi
+import fireflies as ff
 
 mi_scene = mi.scene(path)
 mi_params = mi.traverse(mi_scene)
-ff_scene = fireflies.scene(mi_params)
+ff_scene = ff.scene(mi_params)
 
-mesh = ff_scene.getMesh("test")
-mesh.translateX(-5, 5)
-mesh.rotateY(-math.pi, math.pi)
+mesh = ff_scene.mesh_at(0)
+mesh.rotate_z(-math.pi, math.pi)
 
-firefly_scene.eval()
-#firefly_scene.train() generates uniformly sampled results seen on the right.
+ff_scene.eval()
+#ff_scene.train() generates uniformly sampled results on the right
 for i in range(0, 20):
     ff_scene.randomize()
-    rendered_scene = mi.render(mi_scene)
+    mi.render(mi_scene)
 ```
 
 <p align="center">
 <img src="https://github.com/Henningson/Fireflies/assets/27073509/78e1af22-d526-4130-adc6-d3b30c2cc4d9"/>
-<img src="https://github.com/Henningson/Fireflies/assets/27073509/69631612-e7f6-4973-8afc-cada9febb680"/>
+<img src="https://github.com/Henningson/Fireflies/assets/27073509/882f30b8-8254-493a-9c81-2be702c83326"/>
+
 </p>
 
 # Render Gallery
