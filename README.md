@@ -43,7 +43,8 @@ for i in range(0, 20):
 
 <p align="center">
 <img src="https://github.com/Henningson/Fireflies/assets/27073509/78e1af22-d526-4130-adc6-d3b30c2cc4d9"/>
-<img src="https://github.com/Henningson/Fireflies/assets/27073509/69631612-e7f6-4973-8afc-cada9febb680"/>
+<img src="https://github.com/Henningson/Fireflies/assets/27073509/882f30b8-8254-493a-9c81-2be702c83326"/>
+
 </p>
 
 # Render Gallery
