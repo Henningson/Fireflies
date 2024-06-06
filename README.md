@@ -40,14 +40,11 @@ for i in range(0, 20):
     ff_scene.randomize()
     rendered_scene = mi.render(mi_scene)
 ```
-![eval](https://github.com/Henningson/Fireflies/assets/27073509/78e1af22-d526-4130-adc6-d3b30c2cc4d9)
 
-
-
-# Blender Script
-First, make sure you have the <a href="https://github.com/mitsuba-renderer/mitsuba-blender">Mitsuba Blender Add-On</a> installed.
-The Firefly Blender script can be found in the ```blender``` folder.
-This is a very rudimentary script that lets you define position constraints using Blender itself, as well as export camera paths along curves.
+<p align="center">
+<img src="https://github.com/Henningson/Fireflies/assets/27073509/78e1af22-d526-4130-adc6-d3b30c2cc4d9"/>
+<img src="https://github.com/Henningson/Fireflies/assets/27073509/69631612-e7f6-4973-8afc-cada9febb680"/>
+</p>
 
 # Render Gallery
 <p align="center">
@@ -70,8 +67,7 @@ Which of these point pattern lets you decipher the image the best?
 </p>
 
 When it comes to laser based single shot structured light, this is a good case for how the distribution of the laser pattern directly influences the reconstructability of the scene.
-However, scenes are ![train](https://github.com/Henningson/Fireflies/assets/27073509/69631612-e7f6-4973-8afc-cada9febb680)
-unlike images variable in its composition, i.e. objects may move, rotate or deform, or the camera may move, lighting changes, etc.  
+However, scenes are unlike images variable in its composition, i.e. objects may move, rotate or deform, or the camera may move, lighting changes, etc.  
 So finding a point pattern that is scene specific and optimal is a highly ill-posed problem.
 Thus, we often see structured light pattern, that are
  - easy to produce e.g. single line laser or symmetric point pattern,
