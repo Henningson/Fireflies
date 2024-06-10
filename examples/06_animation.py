@@ -19,9 +19,6 @@ def animation_function(vertices: torch.tensor, time: float) -> torch.tensor:
     # Let's not change the incoming vertices in place.
     vertices_clone = vertices.clone()
 
-    # Change z coordinate of plane via the sin(x_coordinate + time)
-    wave_direction = 0
-
     vertices_clone[:, 1] = (
         vertices_clone[:, 1]
         + torch.sin(vertices_clone[:, 2] * 10.0 + time * 20.0) / 10.0
@@ -31,7 +28,7 @@ def animation_function(vertices: torch.tensor, time: float) -> torch.tensor:
 
 
 if __name__ == "__main__":
-    path = "examples/scenes/animation/animation.xml"
+    path = "scenes/animation/animation.xml"
 
     mitsuba_scene = mi.load_file(path)
     mitsuba_params = mi.traverse(mitsuba_scene)
