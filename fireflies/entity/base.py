@@ -172,8 +172,6 @@ class Transformable:
                 self._num_updates % 100
             ) * self._eval_delta * (self._translation_max - self._translation_min)
 
-        print(self._num_updates)
-
         translation[0, 3] = self._random_translation[0]
         translation[1, 3] = self._random_translation[1]
         translation[2, 3] = self._random_translation[2]
