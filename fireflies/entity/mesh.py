@@ -57,24 +57,20 @@ class Mesh(base.Transformable):
     def add_animation(self, animation_data: torch.tensor) -> None:
         self._animation_vertices = animation_data.to(self._device)
         self._animated = True
+        self._randomizable = True
 
-    def set_animation_func(self, func):
+    def add_animation_func(self, func):
         self._animation_func = func
         self._animated = True
+        self._randomizable = True
 
     def train(self) -> None:
         self._train = True
         self._sequential_animation = False
 
-        if self._animated:
-            self.loadAnimation(self._base_path, self._name)
-
     def eval(self) -> None:
         self._train = False
         self._sequential_animation = True
-        if self._animated:
-            eval_path = f"{self._name}_eval"
-            self.loadAnimation(self._base_path, eval_path)
 
     def set_faces(self, faces: torch.tensor) -> None:
         self._faces = faces.to(self._device)

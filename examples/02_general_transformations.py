@@ -49,7 +49,7 @@ if __name__ == "__main__":
         torch.tensor([0.5, 0.5, 0.5], device=ff_scene._device),
     )
 
-    # There's more in the later examples :)
+    # There's more in later examples :)
 
     ff_scene.train()
     for i in range(100):
