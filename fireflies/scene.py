@@ -11,7 +11,7 @@ class Scene:
     MESH_KEYS = ["mesh", "ply"]
     CAM_KEYS = ["camera", "perspective", "perspectivecamera"]
     PROJ_KEYS = ["projector"]
-    MAT_KEYS = ["mat, bsdf"]
+    MAT_KEYS = ["mat", "bsdf"]
     LIGHT_KEYS = ["light", "spot"]
     TEX_KEYS = ["tex"]
 
@@ -39,10 +39,10 @@ class Scene:
 
         self.init_from_params(self._mitsuba_params)
 
-    def mesh_at(self, index: int):
+    def mesh_at(self, index: int) -> fireflies.entity.Transformable:
         return self._meshes[index]
 
-    def meshes(self):
+    def meshes(self) -> fireflies.entity.Transformable:
         return self._meshes
 
     def get_mesh(self, name: str) -> fireflies.entity.Transformable:
@@ -52,10 +52,13 @@ class Scene:
 
         return None
 
-    def light_at(self, index: int):
+    def mesh(self, name: str) -> fireflies.entity.Transformable:
+        return self.get_mesh(name)
+
+    def light_at(self, index: int) -> fireflies.entity.Transformable:
         return self._lights[index]
 
-    def lights(self):
+    def lights(self) -> fireflies.entity.Transformable:
         return self._lights
 
     def get_light(self, name: str) -> fireflies.entity.Transformable:
@@ -65,7 +68,26 @@ class Scene:
 
         return None
 
-    def init_from_params(self, mitsuba_params):
+    def light(self, name: str) -> fireflies.entity.Transformable:
+        return self.get_light(name)
+
+    def material_at(self, index: int) -> fireflies.entity.Transformable:
+        return self._materials[index]
+
+    def materials(self) -> fireflies.entity.Transformable:
+        return self._materials
+
+    def get_material(self, name: str) -> fireflies.entity.Transformable:
+        for mesh in self._materials:
+            if mesh.name() == name:
+                return mesh
+
+        return None
+
+    def material(self, name: str) -> fireflies.entity.Transformable:
+        return self.get_material(name)
+
+    def init_from_params(self, mitsuba_params) -> None:
         # Get all scene keys
         param_keys = [key.split(".")[0] for key in mitsuba_params.keys()]
 
@@ -157,7 +179,10 @@ class Scene:
 
         for key in material_keys:
             key_without_base = ".".join(key.split(".")[1:])
-            value = self.mitsuba_params[key].torch()
+            value = self._mitsuba_params[key]
+
+            if type(value) == mi.Transform4f:
+                continue
 
             if isinstance(value, mi.Float) or isinstance(value, float):
                 new_material.add_float_key(key_without_base, value, value)
@@ -202,7 +227,7 @@ class Scene:
         if self._projector is not None:
             self._projector.eval()
 
-    def load_curve(self, path: str, name: str = "Curve"):
+    def load_curve(self, path: str, name: str = "Curve") -> None:
         curve = fireflies.utils.importBlenderNurbsObj(path)
         transformable_curve = fireflies.entity.Curve(name, curve, self._device)
 

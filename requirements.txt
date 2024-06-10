@@ -1,0 +1,78 @@
+beautifulsoup4==4.12.3
+certifi==2024.2.2
+charset-normalizer==3.3.2
+chumpy==0.70
+cmake==3.26.4
+colorama @ file:///home/conda/feedstock_root/build_artifacts/colorama_1666700638685/work
+contourpy==1.1.0
+cycler==0.11.0
+dataclasses @ file:///home/conda/feedstock_root/build_artifacts/dataclasses_1628958434797/work
+drjit==0.4.4
+filelock==3.12.2
+fonttools==4.40.0
+freetype-py==2.4.0
+fsspec==2024.2.0
+fvcore @ file:///home/conda/feedstock_root/build_artifacts/fvcore_1671623667463/work
+geomdl==5.3.1
+idna==3.6
+imageio==2.31.1
+iopath @ file:///home/conda/feedstock_root/build_artifacts/iopath_1636568816351/work
+Jinja2==3.1.2
+kiwisolver==1.4.4
+kornia==0.7.1
+lazy_loader==0.3
+lightning-utilities==0.10.1
+lit==16.0.6
+lxml==5.1.0
+MarkupSafe==2.1.3
+matplotlib==3.7.2
+mitsuba==3.5.0
+mpmath==1.3.0
+networkx==3.1
+numpy @ file:///home/conda/feedstock_root/build_artifacts/numpy_1651020388975/work
+nvidia-cublas-cu11==11.11.3.6
+nvidia-cuda-cupti-cu11==11.8.87
+nvidia-cuda-nvrtc-cu11==11.8.89
+nvidia-cuda-runtime-cu11==11.8.89
+nvidia-cudnn-cu11==8.7.0.84
+nvidia-cufft-cu11==10.9.0.58
+nvidia-curand-cu11==10.3.0.86
+nvidia-cusolver-cu11==11.4.1.48
+nvidia-cusparse-cu11==11.7.5.86
+nvidia-nccl-cu11==2.20.5
+nvidia-nvtx-cu11==11.8.86
+opencv-python==4.9.0.80
+packaging==23.1
+Pillow==10.0.0
+plotly==5.19.0
+portalocker @ file:///home/conda/feedstock_root/build_artifacts/portalocker_1695662047585/work
+pyglet==2.0.12
+PyOpenGL==3.1.0
+pyparsing==3.0.9
+pyrender==0.1.45
+python-dateutil==2.8.2
+pytorch3d @ git+https://github.com/facebookresearch/pytorch3d.git@f34104cf6ebefacd7b7e07955ee7aaa823e616ac
+PyWavefront==1.3.3
+PyYAML==6.0
+rdfpy==1.0.0
+requests==2.31.0
+scikit-image==0.22.0
+scipy==1.11.0
+six==1.16.0
+smplx==0.1.28
+soupsieve==2.5
+sympy==1.12
+tabulate @ file:///home/conda/feedstock_root/build_artifacts/tabulate_1665138452165/work
+tenacity==8.2.3
+termcolor @ file:///home/conda/feedstock_root/build_artifacts/termcolor_1704357939450/work
+tifffile==2024.2.12
+torch==2.3.0+cu118
+torchaudio==2.3.0+cu118
+torchmetrics==1.3.1
+torchvision==0.18.0+cu118
+tqdm @ file:///home/conda/feedstock_root/build_artifacts/tqdm_1707598593068/work
+trimesh==4.1.7
+triton==2.3.0
+typing_extensions==4.9.0
+urllib3==2.2.1
+yacs @ file:///home/conda/feedstock_root/build_artifacts/yacs_1645705974477/work
