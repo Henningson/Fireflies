@@ -46,6 +46,11 @@ for i in range(0, 20):
 
 </p>
 
+# Examples
+A bunch of different examples can be found in the examples folder.
+They span from defining a simple scene to training neural networks and optimizing point-based structured light pattern.
+Ideally, you work through them one by one.
+
 # Render Gallery
 <p align="center">
 <img src="https://github.com/Henningson/Fireflies/assets/27073509/dce49ad1-1d22-45b3-a544-2e1fbcd7b30c" height="150"/>
@@ -53,6 +58,8 @@ for i in range(0, 20):
 <img src="https://github.com/Henningson/Fireflies/assets/27073509/429aa015-9987-4559-8776-b819f32ff81a" height="150"/>
 <img src="https://github.com/Henningson/Fireflies/assets/27073509/68922274-344b-42f0-81f5-b65693e11006" height="150"/>
 </p>
+These are some renderings that were created during my work on the aforementioned paper.
+From left to right: Simulated in-vivo colon, the flame shapemodel, phonating human vocal folds with a point-based structured light pattern.
 
 # More Discussion about the Paper
 I think that the eight pages given in the MICCAI format is not enough to properly discuss everything. So here's some further discussion, thoughts and limitations.
