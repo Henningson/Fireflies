@@ -58,6 +58,12 @@ class Transformable:
     def get_randomized_float_attributes(self) -> dict:
         return self._randomized_float_attributes
 
+    def vec3_attributes(self) -> dict:
+        return self._vec3_attributes
+
+    def float_attributes(self) -> dict:
+        return self._float_attributes
+
     def add_float_key(self, key, value_min: float, value_max: float) -> None:
         self._randomizable = True
         self._float_attributes[key] = (value_min, value_max)

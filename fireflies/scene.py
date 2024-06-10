@@ -6,6 +6,8 @@ import fireflies.utils
 import fireflies.emitter
 import fireflies.material
 
+from typing import List
+
 
 class Scene:
     MESH_KEYS = ["mesh", "ply"]
@@ -264,9 +266,10 @@ class Scene:
             if not light.randomizable():
                 continue
 
-            self._mitsuba_params[light.name() + ".to_world"] = mi.Transform4f(
-                light.world().tolist()
-            )
+            if light.name() + ".to_world" in self._mitsuba_params.keys():
+                self._mitsuba_params[light.name() + ".to_world"] = mi.Transform4f(
+                    light.world().tolist()
+                )
 
             float_dict = light.get_randomized_float_attributes()
             vec3_dict = light.get_randomized_vec3_attributes()
@@ -303,16 +306,27 @@ class Scene:
                     value.tolist()
                 )
 
+    def randomize_list(self, entity_list: List[fireflies.entity.Transformable]) -> None:
+        # First find parent objects, i.e. child is none
+        parent_objects = []
+        for entity in entity_list:
+            if entity.parent() is None:
+                parent_objects.append(entity)
+
+        # Now iterate through every parent object and iteratively call each child randomization function
+        for entity in parent_objects:
+            entity.randomize()
+
+            iterator_child = entity.child()
+            while iterator_child is not None:
+                iterator_child.randomize()
+                iterator_child = iterator_child.child()
+
     def randomize(self) -> None:
         # We first randomize all of our objects
-        for mesh in self._meshes:
-            mesh.randomize()
-
-        for light in self._lights:
-            light.randomize()
-
-        for material in self._materials:
-            material.randomize()
+        self.randomize_list(self._meshes)
+        self.randomize_list(self._lights)
+        self.randomize_list(self._materials)
 
         if self._camera is not None:
             self._camera.randomize()
