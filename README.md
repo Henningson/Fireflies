@@ -84,6 +84,13 @@ From left to right: Reconstructed in-vivo colon, the flame shapemodel, phonating
 ## More Discussion about the Paper
 Can be found in the **README** of the **paper** branch.
 
+## Why did you call this Fireflies?
+Because optimizing a point-based laser pattern looks like fireflies that jet around. :)  
+<p align="center">
+<img src="https://github.com/Henningson/Fireflies/assets/27073509/220217db-2a47-4eb2-869f-e39789922a70"/>
+</p>
+
+
 ## PSA
 Since I am now in my last year of my PhD, I won't be really able to further work on this library for the time being.
 Please start pull requests for features, Add-Ons, Bug-fixes, etc. I'd be very happy about any help. :)
