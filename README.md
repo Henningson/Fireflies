@@ -16,12 +16,16 @@ This is a joint work of the <a href="https://www.lgdv.tf.fau.de/">Chair of Visua
 - **Simple animation description**. Have a look into the examples.
 
 # Installation
+Fireflies is hosted on Pypi. You can either install it via
 ```
-conda env create -n Fireflies python=3.10
+pip install fireflies
+```
 
-git clone this
-
-install stuff
+or by cloning this repository. Make sure to create a conda environment first.
+```
+git clone https://github.com/Henningson/Fireflies.git
+cd Fireflies
+pip install .
 ```
 
 ![Datasets](https://github.com/Henningson/Fireflies/assets/27073509/9c617876-356a-420d-8632-cf4c286d6778)
@@ -35,7 +39,7 @@ mi_params = mi.traverse(mi_scene)
 ff_scene = ff.scene(mi_params)
 
 mesh = ff_scene.mesh_at(0)
-mesh.rotate_z(-math.pi, math.pi)
+mesh.rotate_z(-3.141, 3.141)
 
 ff_scene.eval()
 #ff_scene.train() generates uniformly sampled results on the right
@@ -47,7 +51,6 @@ for i in range(0, 20):
 <p align="center">
 <img src="https://github.com/Henningson/Fireflies/assets/27073509/78e1af22-d526-4130-adc6-d3b30c2cc4d9"/>
 <img src="https://github.com/Henningson/Fireflies/assets/27073509/882f30b8-8254-493a-9c81-2be702c83326"/>
-
 </p>
 
 # Examples
@@ -76,7 +79,7 @@ Ideally, you work through them one by one. They consist of:
 <img src="https://github.com/Henningson/Fireflies/assets/27073509/68922274-344b-42f0-81f5-b65693e11006" height="150"/>
 </p>
 These are some renderings that were created during my work on the aforementioned paper.
-From left to right: Simulated in-vivo colon, the flame shapemodel, phonating human vocal folds with a point-based structured light pattern.
+From left to right: Reconstructed in-vivo colon, the flame shapemodel, phonating human vocal folds with a point-based structured light pattern.
 
 ## More Discussion about the Paper
 Can be found in the **README** of the **paper** branch.
@@ -88,6 +91,14 @@ Please start pull requests for features, Add-Ons, Bug-fixes, etc. I'd be very ha
 ## Acknowledgements
 A big thank you to Wenzel Jakob and team for their wonderful work on the Mitsuba renderer.
 You should definitely check out their work: <a href="https://www.mitsuba-renderer.org/">Mitsuba Homepage</a>, <a href="https://github.com/mitsuba-renderer/mitsuba3">Mitsuba Github</a>.
+
+Furthermore, this work was supported by Deutsche Forschungsgemeinschaft (DFG, German Research Foundation) under grant STA662/6-1, Project-ID 448240908 and (partly) funded by the DFG – SFB 1483 – Project-ID 442419336, EmpkinS.
+
+
+<center>
+<img src="https://github.com/Henningson/Vocal3D/blob/main/images/lgdv_small.png?raw=true"/> 
+<img src="https://raw.githubusercontent.com/Henningson/Vocal3D/ac622e36b8a8e7b57a7594f1d12a4f34c81450f4/images/Uniklinikum-Erlangen.svg">
+</center>
 
 ## Citation
 Please cite this, if this work helps you with your research:
