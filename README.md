@@ -95,10 +95,10 @@ You should definitely check out their work: <a href="https://www.mitsuba-rendere
 Furthermore, this work was supported by Deutsche Forschungsgemeinschaft (DFG, German Research Foundation) under grant STA662/6-1, Project-ID 448240908 and (partly) funded by the DFG – SFB 1483 – Project-ID 442419336, EmpkinS.
 
 
-<center>
-<img src="https://github.com/Henningson/Vocal3D/blob/main/images/lgdv_small.png?raw=true" height="100"/> 
-<img src="https://raw.githubusercontent.com/Henningson/Vocal3D/ac622e36b8a8e7b57a7594f1d12a4f34c81450f4/images/Uniklinikum-Erlangen.svg" height="100"/>
-</center>
+<p align="center">
+<img src="https://github.com/Henningson/Vocal3D/blob/main/images/lgdv_small.png?raw=true" height="70"/> 
+<img src="https://raw.githubusercontent.com/Henningson/Vocal3D/ac622e36b8a8e7b57a7594f1d12a4f34c81450f4/images/Uniklinikum-Erlangen.svg" height="70"/>
+</p>
 
 ## Citation
 Please cite this, if this work helps you with your research:
