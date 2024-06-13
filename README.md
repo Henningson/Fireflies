@@ -96,7 +96,7 @@ Furthermore, this work was supported by Deutsche Forschungsgemeinschaft (DFG, Ge
 
 
 <center>
-<img src="https://github.com/Henningson/Vocal3D/blob/main/images/lgdv_small.png?raw=true" height="100"/> 
+<img src="https://github.com/Henningson/Vocal3D/blob/main/images/lgdv_small.png?raw=true" height="100"/>
 <img src="https://raw.githubusercontent.com/Henningson/Vocal3D/ac622e36b8a8e7b57a7594f1d12a4f34c81450f4/images/Uniklinikum-Erlangen.svg" height="100"/>
 </center>
 
