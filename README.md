@@ -5,10 +5,7 @@ It can be used for example, to easily generate highly realistic medical imaging 
 I originally created it to research if the task of finding an optimal point-based laser pattern for structured light laryngoscopy can be reformulated as a gradient-based optimization problem. 
 That is also why you'll find a lot of Single-Shot Structured Light specific stuff in the code.
 
-This repository accompanies the paper **Fireflies: Domain-specific Structured Light
-Optimization for Medical 3D Reconstruction** published at MICCAI'24.
-The code for the paper can be found in the paper-branch.
-This is a joint work of the <a href="https://www.lgdv.tf.fau.de/">Chair of Visual Computing</a> of the Friedrich-Alexander University of Erlangen-Nuremberg and the <a href="https://www.hno-klinik.uk-erlangen.de/phoniatrie/">Phoniatric Division</a> of the University Hospital Erlangen. 
+DAS BRINGT UNGLÜCK.
 
 # Main features
 - **Easy torch-like and pythonic scene randomization description.** This library is made to be easily usable for everyone who regularly uses python and pytorch. We implement train() and eval() functionality from the get go.
