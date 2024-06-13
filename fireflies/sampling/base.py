@@ -21,6 +21,12 @@ class Sampler:
         self._min_range = min
         self._max_range = max
 
+    def get_min(self) -> torch.tensor:
+        return self._min_range
+
+    def get_max(self) -> torch.tensor:
+        return self._max_range
+
     def set_sample_max(self, max: torch.tensor) -> None:
         self._max_range = max
 
@@ -34,7 +40,10 @@ class Sampler:
         if self._sample_func:
             return self._sample_func
 
-        return None
+        if self._train:
+            return self.sample_train()
+        else:
+            return self.sample_eval()
 
     @NotImplementedError
     def sample_train(self) -> torch.tensor:

@@ -2,6 +2,7 @@ import torch
 from typing import List
 
 import fireflies.utils.math
+import fireflies.sampling
 
 
 class Transformable:
@@ -27,11 +28,14 @@ class Transformable:
         self._vec3_attributes = {}
         self._randomized_vec3_attributes = {}
 
-        self._rotation_min = torch.zeros(3, device=self._device)
-        self._rotation_max = torch.zeros(3, device=self._device)
+        zeros = torch.zeros(3, device=self._device)
+        self._rotation_sampler = fireflies.sampling.UniformSampler(
+            zeros.clone(), zeros.clone()
+        )
 
-        self._translation_min = torch.zeros(3, device=self._device)
-        self._translation_max = torch.zeros(3, device=self._device)
+        self._translation_sampler = fireflies.sampling.UniformSampler(
+            zeros.clone(), zeros.clone()
+        )
 
         self._world = torch.eye(4, device=self._device)
         self._randomized_world = torch.eye(4, device=self._device)
@@ -83,9 +87,13 @@ class Transformable:
 
     def train(self) -> None:
         self._train = True
+        self._translation_sampler.train()
+        self._rotation_sampler.train()
 
     def eval(self) -> None:
         self._train = False
+        self._translation_sampler.eval()
+        self._rotation_sampler.eval()
 
     def set_world(self, _origin: torch.tensor) -> None:
         self._world = _origin
@@ -98,55 +106,67 @@ class Transformable:
     def setChild(self, child) -> None:
         self._child = child
 
+    def set_rotation_sampler(self, sampler: fireflies.sampling.Sampler) -> None:
+        self._rotation_sampler = sampler
+
+    def set_translation_sampler(self, sampler: fireflies.sampling.Sampler) -> None:
+        self._translation_sampler = sampler
+
+    def update_index_from_sampler(self, sampler, min, max, index) -> None:
+        sampler_min = sampler.get_min()
+        sampler_max = sampler.get_max()
+
+        sampler_min[index] = min
+        sampler_max[index] = max
+
     def rotate_x(self, min_rot: float, max_rot: float) -> None:
+        """Convenience function for Uniform Sampler"""
         self._randomizable = True
-        self._rotation_min[0] = min_rot
-        self._rotation_max[0] = max_rot
+        self.update_index_from_sampler(self._rotation_sampler, min_rot, max_rot, 0)
 
     def rotate_y(self, min_rot: float, max_rot: float) -> None:
+        """Convenience function for Uniform Sampler"""
         self._randomizable = True
-        self._rotation_min[1] = min_rot
-        self._rotation_max[1] = max_rot
+        self.update_index_from_sampler(self._rotation_sampler, min_rot, max_rot, 1)
 
     def rotate_z(self, min_rot: float, max_rot: float) -> None:
+        """Convenience function for Uniform Sampler"""
         self._randomizable = True
-        self._rotation_min[2] = min_rot
-        self._rotation_max[2] = max_rot
+        self.update_index_from_sampler(self._rotation_sampler, min_rot, max_rot, 2)
 
     def rotate(self, min: torch.tensor, max: torch.tensor) -> None:
+        """Convenience function for Uniform Sampler"""
         self._randomizable = True
-        self._rotation_min = min.to(self._device)
-        self._rotation_max = max.to(self._device)
+        self._rotation_sampler.set_sample_interval(
+            min.to(self._device), max.to(self._device)
+        )
 
     def translate_x(self, min_translation: float, max_translation: float) -> None:
         self._randomizable = True
-        self._translation_min[0] = min_translation
-        self._translation_max[0] = max_translation
+        self.update_index_from_sampler(
+            self._translation_sampler, min_translation, max_translation, 0
+        )
 
     def translate_y(self, min_translation: float, max_translation: float) -> None:
         self._randomizable = True
-        self._translation_min[1] = min_translation
-        self._translation_max[1] = max_translation
+        self.update_index_from_sampler(
+            self._translation_sampler, min_translation, max_translation, 1
+        )
 
     def translate_z(self, min_translation: float, max_translation: float) -> None:
         self._randomizable = True
-        self._translation_min[2] = min_translation
-        self._translation_max[2] = max_translation
+        self.update_index_from_sampler(
+            self._translation_sampler, min_translation, max_translation, 2
+        )
 
     def translate(self, min: torch.tensor, max: torch.tensor) -> None:
         self._randomizable = True
-        self._translation_min = min.to(self._device)
-        self._translation_max = max.to(self._device)
+        self._translation_sampler.set_sample_interval(
+            min.to(self._device), max.to(self._device)
+        )
 
     def sample_rotation(self) -> torch.tensor:
-        if self._train:
-            self._sampled_rotation = fireflies.utils.math.randomBetweenTensors(
-                self._rotation_min, self._rotation_max
-            )
-        else:
-            self._sampled_rotation = self._rotation_min + (
-                self._num_updates % 100
-            ) * self._eval_delta * (self._rotation_max - self._rotation_min)
+        self._sampled_rotation = self._rotation_sampler.sample()
 
         zMat = fireflies.utils.math.getPitchTransform(
             self._sampled_rotation[2], self._device
@@ -163,14 +183,7 @@ class Transformable:
     def sample_translation(self) -> torch.tensor:
         translation = torch.eye(4, device=self._device)
 
-        if self._train:
-            self._random_translation = fireflies.utils.math.randomBetweenTensors(
-                self._translation_min, self._translation_max
-            )
-        else:
-            self._random_translation = self._translation_min + (
-                self._num_updates % 100
-            ) * self._eval_delta * (self._translation_max - self._translation_min)
+        self._random_translation = self._translation_sampler.sample()
 
         translation[0, 3] = self._random_translation[0]
         translation[1, 3] = self._random_translation[1]

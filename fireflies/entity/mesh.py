@@ -5,6 +5,7 @@ import pywavefront
 
 import fireflies.entity.base as base
 import fireflies.utils.math
+import fireflies.sampling
 
 
 class Mesh(base.Transformable):
@@ -19,37 +20,35 @@ class Mesh(base.Transformable):
         self._vertices = vertex_data.to(self._device)
         self._vertices_animation = None
 
-        self._scale_min = torch.ones(3, device=self._device)
-        self._scale_max = torch.ones(3, device=self._device)
+        ones = torch.ones(3, device=self._device)
+        self._scale_sampler = fireflies.sampling.UniformSampler(
+            ones.clone(), ones.clone()
+        )
 
         self._animated = False
 
         self._animation_data = None
-        self._animation_index = 0
-
         self._animation_func = None
         self._animation_time = 0.0
-        self._time_delta = 0.01
+        self._animation_sampler = None
 
     def scale_x(self, min_scale: float, max_scale: float) -> None:
         self._randomizable = True
-        self._scale_min[0] = min_scale
-        self._scale_max[0] = max_scale
+        self.update_index_from_sampler(self._scale_sampler, min_scale, max_scale, 0)
 
     def scale_y(self, min_scale: float, max_scale: float) -> None:
         self._randomizable = True
-        self._scale_min[1] = min_scale
-        self._scale_max[1] = max_scale
+        self.update_index_from_sampler(self._scale_sampler, min_scale, max_scale, 1)
 
     def scale_z(self, min_scale: float, max_scale: float) -> None:
         self._randomizable = True
-        self._scale_min[2] = min_scale
-        self._scale_max[2] = max_scale
+        self.update_index_from_sampler(self._scale_sampler, min_scale, max_scale, 2)
 
     def scale(self, min: torch.tensor, max: torch.tensor) -> None:
         self._randomizable = True
-        self._scale_min = min.to(self._device)
-        self._scale_max = max.to(self._device)
+        self._scale_sampler.set_sample_interval(
+            min.to(self._device), max.to(self._device)
+        )
 
     def animated(self) -> bool:
         return self._animated
@@ -59,10 +58,21 @@ class Mesh(base.Transformable):
         self._animated = True
         self._randomizable = True
 
-    def add_animation_func(self, func):
+    def add_animation_func(self, func, min_range, max_range) -> None:
         self._animation_func = func
+        self._animation_sampler = fireflies.sampling.UniformSampler(
+            min_range, max_range, device=self._device
+        )
         self._animated = True
         self._randomizable = True
+
+    @NotImplementedError
+    def add_train_animation_from_obj(self, path, min_index, max_index) -> None:
+        pass
+
+    @NotImplementedError
+    def add_eval_animation_from_obj(self, path, min_index, max_index) -> None:
+        pass
 
     def train(self) -> None:
         self._train = True
@@ -81,15 +91,7 @@ class Mesh(base.Transformable):
     def sample_scale(self) -> torch.tensor:
         scale_matrix = torch.eye(4, device=self._device)
 
-        random_scale = None
-        if self._train:
-            random_scale = fireflies.utils.math.randomBetweenTensors(
-                self._scale_min, self._scale_max
-            )
-        else:
-            random_scale = self._scale_min + (
-                self._num_updates % 100
-            ) * self._eval_delta * (self._scale_max - self._scale_min)
+        random_scale = self._scale_sampler.sample()
 
         scale_matrix[0, 0] = random_scale[0]
         scale_matrix[1, 1] = random_scale[1]
@@ -144,25 +146,11 @@ class Mesh(base.Transformable):
         if not self._animated:
             return self._vertices
 
+        # Can either be an integer or a float, depending if we loaded meshes or defined an animation function
+        time_sample = self._animation_sampler.sample()
         if self._animation_func is not None:
-            time_sample = 0.0
-            if self._train:
-                time_sample = fireflies.utils.math.uniformBetweenValues(0.0, 1.0)
-            else:
-                time_sample = self._animation_time
-                self._animation_time += self._time_delta
             return self._animation_func(self._vertices, time_sample)
         elif self._animation_data is not None:
-            index = 0
-            if self._train:
-                num_anim_frames = len(self._vertex_offsets)
-                index = random.randint(0, num_anim_frames - 1)
-            else:
-                index = self._animation_index
-                self._animation_index = (
-                    self._animation_index + 1
-                ) % self._animation_vertices.shape[0]
-
-            return self._animation_vertices[index]
+            return self._animation_vertices[time_sample]
 
         return None
