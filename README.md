@@ -5,10 +5,7 @@ It can be used for example, to easily generate highly realistic medical imaging 
 I originally created it to research if the task of finding an optimal point-based laser pattern for structured light laryngoscopy can be reformulated as a gradient-based optimization problem. 
 That is also why you'll find a lot of Single-Shot Structured Light specific stuff in the code.
 
-This repository accompanies the paper **Fireflies: Domain-specific Structured Light
-Optimization for Medical 3D Reconstruction** published at MICCAI'24.
-The code for the paper can be found in the paper-branch.
-This is a joint work of the <a href="https://www.lgdv.tf.fau.de/">Chair of Visual Computing</a> of the Friedrich-Alexander University of Erlangen-Nuremberg and the <a href="https://www.hno-klinik.uk-erlangen.de/phoniatrie/">Phoniatric Division</a> of the University Hospital Erlangen. 
+DAS BRINGT UNGLÜCK.
 
 # Main features
 - **Easy torch-like and pythonic scene randomization description.** This library is made to be easily usable for everyone who regularly uses python and pytorch. We implement train() and eval() functionality from the get go.
@@ -84,6 +81,13 @@ From left to right: Reconstructed in-vivo colon, the flame shapemodel, phonating
 ## More Discussion about the Paper
 Can be found in the **README** of the **paper** branch.
 
+## Why did you call this Fireflies?
+Because optimizing a point-based laser pattern looks like fireflies that jet around. :)  
+<p align="center">
+<img src="https://github.com/Henningson/Fireflies/assets/27073509/220217db-2a47-4eb2-869f-e39789922a70"/>
+</p>
+
+
 ## PSA
 Since I am now in my last year of my PhD, I won't be really able to further work on this library for the time being.
 Please start pull requests for features, Add-Ons, Bug-fixes, etc. I'd be very happy about any help. :)
@@ -95,10 +99,17 @@ You should definitely check out their work: <a href="https://www.mitsuba-rendere
 Furthermore, this work was supported by Deutsche Forschungsgemeinschaft (DFG, German Research Foundation) under grant STA662/6-1, Project-ID 448240908 and (partly) funded by the DFG – SFB 1483 – Project-ID 442419336, EmpkinS.
 
 
+<<<<<<< HEAD
 <center>
 <img src="https://github.com/Henningson/Vocal3D/blob/main/images/lgdv_small.png?raw=true" height="100"/>
 <img src="https://raw.githubusercontent.com/Henningson/Vocal3D/ac622e36b8a8e7b57a7594f1d12a4f34c81450f4/images/Uniklinikum-Erlangen.svg" height="100"/>
 </center>
+=======
+<p align="center">
+<img src="https://github.com/Henningson/Vocal3D/blob/main/images/lgdv_small.png?raw=true" height="70"/> 
+<img src="https://raw.githubusercontent.com/Henningson/Vocal3D/ac622e36b8a8e7b57a7594f1d12a4f34c81450f4/images/Uniklinikum-Erlangen.svg" height="70"/>
+</p>
+>>>>>>> 3ae11dbc820e765c4dbadfa87e3bc2ef50a1f8e4
 
 ## Citation
 Please cite this, if this work helps you with your research:
