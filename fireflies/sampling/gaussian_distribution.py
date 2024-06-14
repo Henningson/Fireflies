@@ -1,5 +1,5 @@
 import torch
-import base
+import fireflies.sampling.base as base
 
 
 class GaussianSampler(base.Sampler):
@@ -12,7 +12,7 @@ class GaussianSampler(base.Sampler):
         eval_step_size: float = 0.01,
         device: torch.cuda.device = torch.device("cuda"),
     ) -> None:
-        super(base.Sampler, self).__init__(min, max, eval_step_size, device)
+        super(GaussianSampler, self).__init__(min, max, eval_step_size, device)
         self._mean = mean
         self._std = std
 

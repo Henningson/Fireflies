@@ -29,7 +29,6 @@ class Mesh(base.Transformable):
 
         self._animation_data = None
         self._animation_func = None
-        self._animation_time = 0.0
         self._animation_sampler = None
 
     def scale_x(self, min_scale: float, max_scale: float) -> None:
@@ -49,6 +48,9 @@ class Mesh(base.Transformable):
         self._scale_sampler.set_sample_interval(
             min.to(self._device), max.to(self._device)
         )
+
+    def set_scale_sampler(self, sampler: fireflies.sampling.Sampler) -> None:
+        self._scale_sampler = sampler
 
     def animated(self) -> bool:
         return self._animated
@@ -75,12 +77,18 @@ class Mesh(base.Transformable):
         pass
 
     def train(self) -> None:
-        self._train = True
-        self._sequential_animation = False
+        super(Mesh, self).train()
+        self._scale_sampler.train()
+
+        if self._animation_sampler:
+            self._animation_sampler.train()
 
     def eval(self) -> None:
-        self._train = False
-        self._sequential_animation = True
+        super(Mesh, self).eval()
+        self._scale_sampler.eval()
+
+        if self._animation_sampler:
+            self._animation_sampler.eval()
 
     def set_faces(self, faces: torch.tensor) -> None:
         self._faces = faces.to(self._device)
@@ -102,15 +110,13 @@ class Mesh(base.Transformable):
         if not self.randomizable():
             return
 
-        if not self._train:
-            self._num_updates += 1
-
         self._randomized_world = (
             (self.sample_translation() + self._centroid_mat)
             @ self.sample_rotation()
             @ self.sample_scale()
             @ self._world
         )
+        print(self._randomized_world)
 
     def faces(self) -> torch.tensor:
         return self._faces

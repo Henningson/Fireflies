@@ -38,14 +38,16 @@ if __name__ == "__main__":
     fireflies_scene = fireflies.Scene(mitsuba_params)
 
     mesh = fireflies_scene.mesh("mesh-Animation")
-    mesh.add_animation_func(animation_function)
+    mesh.add_animation_func(
+        animation_function,
+        torch.tensor([0.0]).to(fireflies_scene.device()),
+        torch.tensor([2 * np.pi]).to(fireflies_scene.device()),
+    )
 
     fireflies_scene.eval()
     for i in range(1000):
         fireflies_scene.randomize()
 
         render = mi.render(mitsuba_scene, spp=12)
-
-        cv2.imshow("a", render_to_opencv(render))
-        cv2.imwrite(f"im/{i:05d}.png", render_to_opencv(render))
-        cv2.waitKey(1)
+        cv2.imwrite("a.png", render_to_opencv(render))
+        cv2.waitKey(500)

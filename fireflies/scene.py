@@ -41,6 +41,9 @@ class Scene:
 
         self.init_from_params(self._mitsuba_params)
 
+    def device(self) -> torch.cuda.device:
+        return self._device
+
     def mesh_at(self, index: int) -> fireflies.entity.Transformable:
         return self._meshes[index]
 

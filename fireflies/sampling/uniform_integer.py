@@ -1,5 +1,5 @@
 import torch
-import base
+import fireflies.sampling.base as base
 import random
 
 
@@ -14,7 +14,7 @@ class UniformIntegerSampler(base.Sampler):
         """
         Will generate samples from the integer interval given by [min_integer, ..., max_integer) similar to how range() is defined in python.
         """
-        super(base.Sampler, self).__init__(min, max, eval_step_size, device)
+        super(UniformIntegerSampler, self).__init__(min, max, eval_step_size, device)
         self._current_step = 0
 
     def sample_eval(self) -> int:

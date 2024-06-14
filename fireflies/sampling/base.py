@@ -10,16 +10,16 @@ class Sampler:
         device: torch.cuda.device = torch.device("cuda"),
     ) -> None:
         self._device = device
-        self._min_range = min
-        self._max_range = max
+        self._min_range = min.clone()
+        self._max_range = max.clone()
         self._train = True
 
         self._eval_step_size = eval_step_size
-        self._current_step = self._min_range
+        self._current_step = self._min_range.clone()
 
     def set_sample_interval(self, min: torch.tensor, max: torch.tensor) -> None:
-        self._min_range = min
-        self._max_range = max
+        self._min_range = min.clone()
+        self._max_range = max.clone()
 
     def get_min(self) -> torch.tensor:
         return self._min_range
@@ -28,7 +28,10 @@ class Sampler:
         return self._max_range
 
     def set_sample_max(self, max: torch.tensor) -> None:
-        self._max_range = max
+        self._max_range = max.clone()
+
+    def set_sample_min(self, min: torch.tensor) -> None:
+        self._min_range = min.clone()
 
     def train(self) -> None:
         self._train = True
@@ -37,9 +40,6 @@ class Sampler:
         self._train = False
 
     def sample(self) -> torch.tensor:
-        if self._sample_func:
-            return self._sample_func
-
         if self._train:
             return self.sample_train()
         else:
@@ -50,13 +50,13 @@ class Sampler:
         return None
 
     def sample_eval(self) -> torch.tensor:
+        if (self._min_range == self._max_range).all():
+            return self._min_range
+
         sample = self._current_step
         self._current_step += self._eval_step_size
 
-        if self._current_step > self._max_range:
+        if (self._current_step > self._max_range).any():
             self._current_step = self._min_range
 
         return sample
-
-    def set_sample_func(self, func) -> None:
-        self._sample_func = func
