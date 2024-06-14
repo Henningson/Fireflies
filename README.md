@@ -19,6 +19,16 @@ pip install fireflies
 ```
 
 or by cloning this repository. Make sure to create a conda environment first.
+First install the necessary dependencies:
+```
+pip install torch
+pip install mitsuba
+```
+To run the examples, you also need OpenCV:
+```
+pip install opencv-python
+```
+Finally, you can install Fireflies via:
 ```
 git clone https://github.com/Henningson/Fireflies.git
 cd Fireflies
