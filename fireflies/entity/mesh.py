@@ -31,6 +31,9 @@ class Mesh(base.Transformable):
         self._animation_func = None
         self._animation_sampler = None
 
+    def set_scale_sampler(self, sampler: fireflies.sampling.Sampler) -> None:
+        self._scale_sampler = sampler
+
     def scale_x(self, min_scale: float, max_scale: float) -> None:
         self._randomizable = True
         self.update_index_from_sampler(self._scale_sampler, min_scale, max_scale, 0)
@@ -116,7 +119,6 @@ class Mesh(base.Transformable):
             @ self.sample_scale()
             @ self._world
         )
-        print(self._randomized_world)
 
     def faces(self) -> torch.tensor:
         return self._faces

@@ -17,4 +17,4 @@ class GaussianSampler(base.Sampler):
         self._std = std
 
     def sample_train(self) -> torch.tensor:
-        return torch.normal(self._mean, self._std, device=self._device)
+        return torch.normal(self._mean, self._std)
