@@ -1,7 +1,7 @@
 ![Fireflies](https://github.com/Henningson/Fireflies/assets/27073509/36254690-b42a-4604-849f-ebfa4ffa69c6)
 
 **Fireflies** is a wrapper for the <a href="https://mitsuba.readthedocs.io/en/latest/">Mitsuba Renderer</a> and allows for rapid prototyping and generation of physically-based renderings and simulation data in a differentiable manner.
-It can be used for example, to easily generate highly realistic medical imaging data for medical machine learning tasks.
+It can be used for example, to easily generate highly realistic medical imaging data for medical machine learning tasks or test the reconstruction capabilities of Structured Light projection systems in known domains.
 I originally created it to research if the task of finding an optimal point-based laser pattern for structured light laryngoscopy can be reformulated as a gradient-based optimization problem. 
 That is also why you'll find a lot of Single-Shot Structured Light specific stuff in the code.
 
@@ -19,6 +19,17 @@ pip install fireflies
 ```
 
 or by cloning this repository. Make sure to create a conda environment first.
+First install the necessary dependencies:
+```
+pip install pywavefront geomdl
+pip install torch
+pip install mitsuba
+```
+To run the examples, you also need OpenCV:
+```
+pip install opencv-python
+```
+Finally, you can install Fireflies via:
 ```
 git clone https://github.com/Henningson/Fireflies.git
 cd Fireflies
@@ -53,19 +64,21 @@ for i in range(0, 20):
 # Examples
 A bunch of different examples can be found in the examples folder.
 They span from defining a simple scene to training neural networks and optimizing point-based structured light pattern.
-Ideally, you work through them one by one. They consist of:
+Ideally, you work through them one by one. The last examples include the experiments of the paper. They consist of:
 
 1. **Hello World** - How to wrap fireflies around your Mitsuba scene.
 2. **General Transformations** - Showcasing different affine transformations.
 3. **Parent Child** - Defining hierarchical relationships for objects in the scene.
 4. **Material Randomization** - How to randomize material parameters
 5. **Light Randomization** - How to randomize lights
-6. **Animation** - Apply deformations either by scripting, or by loading meshes from a folder.
-7. **Optimization** - Using fireflies for optimization of different parameters.
-8. **Gradient Accumulation** - Using Gradient Accumulation for smoother update steps during optimization.
-9. **Laser Pattern Creation** - How to define and create laser pattern highlighted in the paper. 
-10. **Laser Pattern Optimization** - Laser pattern optimization to reduce ambiguities in correspondence estimation.
-11. **Domain Specific Pattern Optimization** - Optimize a laser pattern that minimizes a specific target function. For paper readers, this is the Gaussian optimization task. More paper specific code can be found in the **paper** branch.
+6. **Sampling** - How to implement different sampling strategies for scene randomization.
+7. **Animation** - Apply deformations either by scripting, or by loading meshes from a folder.
+8. **Laser Pattern Creation** - How to define and create laser pattern highlighted in the paper. 
+9. **Laser Pattern Optimization** - Laser pattern optimization to reduce ambiguities in correspondence estimation.
+10. **Domain Specific Pattern Optimization: Gaussian Mean Localization** - Optimize a laser pattern and small neural network that minimize a specific target function. For paper readers, this is the Gaussian optimization task. The complete experiments can be found in the **paper** branch.
+11. **Domain Specific Pattern Optimization: Depth Completion (Vocal Fold/Laryngoscopy)** - Optimize a laser pattern and gated convolutional neural network that infer dense depth maps from sparse depth input in a laryngoscopic setting. For paper readers, this is the Vocal Fold Depth Completion task. The complete experiments can be found in the **paper** branch.
+12. **Domain Specific Pattern Optimization: Depth Completion (Colonoscopy)** - Optimize a laser pattern and gated convolutional neural network that infer dense depth maps from sparse depth input in a coloscopic setting. For paper readers, this is the Colon Depth Completion task. The complete experiments can be found in the **paper** branch.
+13. **3D Reconstruction Pipeline** - Implementing a 3D reconstruction pipeline for evaluating a grid-based laser pattern.
 
 
 # Render Gallery
@@ -99,17 +112,10 @@ You should definitely check out their work: <a href="https://www.mitsuba-rendere
 Furthermore, this work was supported by Deutsche Forschungsgemeinschaft (DFG, German Research Foundation) under grant STA662/6-1, Project-ID 448240908 and (partly) funded by the DFG – SFB 1483 – Project-ID 442419336, EmpkinS.
 
 
-<<<<<<< HEAD
-<center>
-<img src="https://github.com/Henningson/Vocal3D/blob/main/images/lgdv_small.png?raw=true" height="100"/>
-<img src="https://raw.githubusercontent.com/Henningson/Vocal3D/ac622e36b8a8e7b57a7594f1d12a4f34c81450f4/images/Uniklinikum-Erlangen.svg" height="100"/>
-</center>
-=======
 <p align="center">
 <img src="https://github.com/Henningson/Vocal3D/blob/main/images/lgdv_small.png?raw=true" height="70"/> 
 <img src="https://raw.githubusercontent.com/Henningson/Vocal3D/ac622e36b8a8e7b57a7594f1d12a4f34c81450f4/images/Uniklinikum-Erlangen.svg" height="70"/>
 </p>
->>>>>>> 3ae11dbc820e765c4dbadfa87e3bc2ef50a1f8e4
 
 ## Citation
 Please cite this, if this work helps you with your research:
