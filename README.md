@@ -21,6 +21,7 @@ pip install fireflies
 or by cloning this repository. Make sure to create a conda environment first.
 First install the necessary dependencies:
 ```
+pip install geomdl
 pip install torch
 pip install mitsuba
 ```
