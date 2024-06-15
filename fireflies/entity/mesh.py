@@ -73,24 +73,24 @@ class Mesh(base.Transformable):
         self._randomizable = True
 
     def add_train_animation_from_obj(self, path: str, min: int = None, max: int = None) -> None:
-        train_objs = self.load_animation(path)
+        self._anim_data_train = self.load_animation(path)
         
         if self._animation_sampler:
-            self._animation_sampler.set_train_interval(0 if min is None else 0, train_objs.shape[0] if max is None else max)
+            self._animation_sampler.set_train_interval(0 if min is None else 0, self._anim_data_train.shape[0] if max is None else max)
             return
         
         self._animation_sampler = fireflies.sampling.AnimationSampler(0, 1, 0, 1)
-        self._animation_sampler.set_train_interval(0 if min is None else 0, train_objs.shape[0] if max is None else max)
+        self._animation_sampler.set_train_interval(0 if min is None else 0, self._anim_data_train.shape[0] if max is None else max)
 
     def add_eval_animation_from_obj(self, path: str, min: int = None, max: int = None) -> None:
-        train_objs = self.load_animation(path)
+        self._anim_data_eval = self.load_animation(path)
         
         if self._animation_sampler:
-            self._animation_sampler.set_eval_interval(0 if min is None else 0, train_objs.shape[0] if max is None else max)
+            self._animation_sampler.set_eval_interval(0 if min is None else 0, self._anim_data_eval.shape[0] if max is None else max)
             return
         
         self._animation_sampler = fireflies.sampling.AnimationSampler(0, 1, 0, 1)
-        self._animation_sampler.set_eval_interval(0 if min is None else 0, train_objs.shape[0] if max is None else max)
+        self._animation_sampler.set_eval_interval(0 if min is None else 0, self._anim_data_eval.shape[0] if max is None else max)
 
     def train(self) -> None:
         super(Mesh, self).train()
@@ -170,7 +170,7 @@ class Mesh(base.Transformable):
         time_sample = self._animation_sampler.sample()
         if self._animation_func is not None:
             return self._animation_func(self._vertices, time_sample)
-        elif self._animation_data is not None:
-            return self._animation_vertices[time_sample]
+        elif self._anim_data_train is not None and self._anim_data_eval is not None:
+            return self._anim_data_train[time_sample] if self.train() else self._anim_data_eval[time_sample]
 
         return None
