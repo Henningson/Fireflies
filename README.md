@@ -1,6 +1,6 @@
 ![Fireflies](https://github.com/Henningson/Fireflies/assets/27073509/36254690-b42a-4604-849f-ebfa4ffa69c6)
 
-**Fireflies** is a wrapper for the <a href="https://mitsuba.readthedocs.io/en/latest/">Mitsuba Renderer</a> and allows for rapid prototyping and generation of physically-based renderings and simulation data in a differentiable manner.
+**Fireflies** is a wrapper for the <a href="https://mitsuba.readthedocs.io/en/latest/">Mitsuba Renderer</a> and allows for rapid prototyping and generation of randomized physically-based renderings and simulation data with an easy to use scene constraint description.
 It can be used for example, to easily generate highly realistic medical imaging data for medical machine learning tasks or test the reconstruction capabilities of Structured Light projection systems in known domains.
 I originally created it to research if the task of finding an optimal point-based laser pattern for structured light laryngoscopy can be reformulated as a gradient-based optimization problem. 
 That is also why you'll find a lot of Single-Shot Structured Light specific stuff in the code.
