@@ -27,7 +27,8 @@ class Mesh(base.Transformable):
 
         self._animated = False
 
-        self._animation_data = None
+        self._anim_data_train = None
+        self._anim_data_eval = None
         self._animation_func = None
         self._animation_sampler = None
 
@@ -71,13 +72,25 @@ class Mesh(base.Transformable):
         self._animated = True
         self._randomizable = True
 
-    @NotImplementedError
-    def add_train_animation_from_obj(self, path, min_index, max_index) -> None:
-        pass
+    def add_train_animation_from_obj(self, path: str, min: int = None, max: int = None) -> None:
+        train_objs = self.load_animation(path)
+        
+        if self._animation_sampler:
+            self._animation_sampler.set_train_interval(0 if min is None else 0, train_objs.shape[0] if max is None else max)
+            return
+        
+        self._animation_sampler = fireflies.sampling.AnimationSampler(0, 1, 0, 1)
+        self._animation_sampler.set_train_interval(0 if min is None else 0, train_objs.shape[0] if max is None else max)
 
-    @NotImplementedError
-    def add_eval_animation_from_obj(self, path, min_index, max_index) -> None:
-        pass
+    def add_eval_animation_from_obj(self, path: str, min: int = None, max: int = None) -> None:
+        train_objs = self.load_animation(path)
+        
+        if self._animation_sampler:
+            self._animation_sampler.set_eval_interval(0 if min is None else 0, train_objs.shape[0] if max is None else max)
+            return
+        
+        self._animation_sampler = fireflies.sampling.AnimationSampler(0, 1, 0, 1)
+        self._animation_sampler.set_eval_interval(0 if min is None else 0, train_objs.shape[0] if max is None else max)
 
     def train(self) -> None:
         super(Mesh, self).train()
@@ -135,7 +148,7 @@ class Mesh(base.Transformable):
 
         return temp_vertex
 
-    def load_animation(self, path: str) -> None:
+    def load_animation(self, path: str) -> torch.tensor:
         animation_data = []
         for file in sorted(os.listdir(path)):
             if file.endswith(".obj"):
@@ -147,8 +160,7 @@ class Mesh(base.Transformable):
                     torch.tensor(obj.vertices, device=self._device).reshape(-1, 3)
                 )
 
-        self.add_animation(torch.stack(animation_data))
-        self._animated = True
+        return torch.stack(animation_data)
 
     def sample_animation(self):
         if not self._animated:
