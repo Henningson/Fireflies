@@ -1,9 +1,8 @@
 ![Fireflies](https://github.com/Henningson/Fireflies/assets/27073509/36254690-b42a-4604-849f-ebfa4ffa69c6)
 
 **Fireflies** is a wrapper for the <a href="https://mitsuba.readthedocs.io/en/latest/">Mitsuba Renderer</a> and allows for rapid prototyping and generation of physically-based renderings and simulation data in a differentiable manner.
-It can be used for example, to easily generate highly realistic medical imaging data for medical machine learning tasks or test the reconstruction capabilities of Structured Light projection systems in known domains.
+It can be used for example, to easily generate highly realistic medical imaging data for medical machine learning tasks or (its intended use) test the reconstruction capabilities of Structured Light projection systems in simulated environments.
 I originally created it to research if the task of finding an optimal point-based laser pattern for structured light laryngoscopy can be reformulated as a gradient-based optimization problem. 
-That is also why you'll find a lot of Single-Shot Structured Light specific stuff in the code.
 
 DAS BRINGT UNGLÜCK.
 
@@ -11,14 +10,12 @@ DAS BRINGT UNGLÜCK.
 - **Easy torch-like and pythonic scene randomization description.** This library is made to be easily usable for everyone who regularly uses python and pytorch. We implement train() and eval() functionality from the get go.
 - **Integratable into online deep-learning and machine learning tasks** due to the differentiability of the mitsuba renderer w.r.t. the scene parameters.
 - **Simple animation description**. Have a look into the examples.
+- **Single Shot Structured Light specific**. You can easily test different projection pattern and reconstruction algorithms on randomized scenes, giving a good estimation of the quality and viability of patterns/systems/algorithms.
 
 # Installation
-Fireflies is hosted on Pypi. You can either install it via
-```
-pip install fireflies
-```
-
-or by cloning this repository. Make sure to create a conda environment first.
+Make sure to create a conda environment first.
+I tested fireflies on Python 3.10, it should however work with every Python version that is also supported by Mitsuba and Pytorch.
+I'm working on adding Fireflies to PyPi in the future.
 First install the necessary dependencies:
 ```
 pip install pywavefront geomdl
@@ -80,6 +77,11 @@ Ideally, you work through them one by one. The last examples include the experim
 12. **Domain Specific Pattern Optimization: Depth Completion (Colonoscopy)** - Optimize a laser pattern and gated convolutional neural network that infer dense depth maps from sparse depth input in a coloscopic setting. For paper readers, this is the Colon Depth Completion task. The complete experiments can be found in the **paper** branch.
 13. **3D Reconstruction Pipeline** - Implementing a 3D reconstruction pipeline for evaluating a grid-based laser pattern.
 
+# Building and loading your own scene
+You can easily generate a scene using Blender.
+To export a scene in Mitsubas required .xml format, you first need to install the <a href="https://github.com/mitsuba-renderer/mitsuba-blender">Mitsuba Blender Add-On</a>.
+You can then export it under the File -> Export Tab.  
+Make sure to tick the ✅ export ids Checkbox, as fireflies infers the object type by checking for name qualifiers with specific keys, e.g.: "mesh", "brdf", etc.
 
 # Render Gallery
 <p align="center">
