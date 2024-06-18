@@ -20,15 +20,11 @@ class Material(fireflies.entity.Transformable):
         super(Material, self).__init__(name, device)
 
     def randomize(self) -> None:
-        for key, value in self._float_attributes.items():
-            self._randomized_float_attributes[key] = (
-                fireflies.utils.math.uniformBetweenValues(value[0], value[1])
-            )
+        for key, sampler in self._float_attributes.items():
+            self._randomized_float_attributes[key] = sampler.sample()
 
-        for key, value in self._vec3_attributes.items():
-            self._randomized_vec3_attributes[key] = (
-                fireflies.utils.math.randomBetweenTensors(value[0], value[1])
-            )
+        for key, sampler in self._vec3_attributes.items():
+            self._randomized_vec3_attributes[key] = sampler.sample()
 
     @WorldAssignmentWarning
     def set_world(self, _origin: torch.tensor) -> None:

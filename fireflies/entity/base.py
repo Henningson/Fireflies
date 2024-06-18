@@ -68,13 +68,27 @@ class Transformable:
     def float_attributes(self) -> dict:
         return self._float_attributes
 
-    def add_float_key(self, key, value_min: float, value_max: float) -> None:
+    def add_float_sampler(self, key: str, sampler: fireflies.sampling.Sampler) -> None:
         self._randomizable = True
-        self._float_attributes[key] = (value_min, value_max)
+        self._float_attributes[key] = sampler
 
-    def add_vec3_key(self, key, min_vec: torch.tensor, max_vec: torch.tensor) -> None:
+    def add_float_key(self, key: str, min: float, max: float) -> None:
+        """Transforms float key into a Uniform Sampler"""
         self._randomizable = True
-        self._vec3_attributes[key] = (min_vec, max_vec)
+        self._float_attributes[key] = fireflies.sampling.UniformSampler(
+            min, max, device=self._device
+        )
+
+    def add_vec3_key(self, key: str, min: torch.tensor, max: torch.tensor) -> None:
+        """Transforms vec3 into Uniform Sampler"""
+        self._randomizable = True
+        self._vec3_attributes[key] = fireflies.sampling.UniformSampler(
+            min, max, device=self._device
+        )
+
+    def add_vec3_sampler(self, key: str, sampler: fireflies.sampling.Sampler) -> None:
+        self._randomizable = True
+        self._vec3_attributes[key] = sampler
 
     def parent(self):
         return self._parent
@@ -90,10 +104,22 @@ class Transformable:
         self._translation_sampler.train()
         self._rotation_sampler.train()
 
+        for sampler in self._float_attributes.values():
+            sampler.train()
+
+        for sampler in self._vec3_attributes.values():
+            sampler.train()
+
     def eval(self) -> None:
         self._train = False
         self._translation_sampler.eval()
         self._rotation_sampler.eval()
+
+        for sampler in self._float_attributes.values():
+            sampler.eval()
+
+        for sampler in self._vec3_attributes.values():
+            sampler.eval()
 
     def set_world(self, _origin: torch.tensor) -> None:
         self._world = _origin
@@ -195,24 +221,17 @@ class Transformable:
         if not self.randomizable():
             return
 
-        if not self._train:
-            self._num_updates += 1
-
         self._randomized_world = (
             (self.sample_translation() + self._centroid_mat)
             @ self.sample_rotation()
             @ self._world
         )
 
-        for key, value in self._float_attributes.items():
-            self._randomized_float_attributes[key] = (
-                fireflies.utils.math.uniformBetweenValues(value[0], value[1])
-            )
+        for key, sampler in self._float_attributes.items():
+            self._randomized_float_attributes[key] = sampler.sample()
 
-        for key, value in self._vec3_attributes.items():
-            self._randomized_vec3_attributes[key] = (
-                fireflies.utils.math.randomBetweenTensors(value[0], value[1])
-            )
+        for key, sampler in self._vec3_attributes.items():
+            self._randomized_vec3_attributes[key] = sampler.sample()
 
     def relative(self) -> None:
         return self._parent is not None

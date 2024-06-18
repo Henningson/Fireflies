@@ -34,9 +34,6 @@ class Scene:
 
         self._device = device
 
-        self._num_updates = 0
-        self._sequential_animation = False
-
         self._mitsuba_params = mitsuba_params
 
         self.init_from_params(self._mitsuba_params)
@@ -152,6 +149,11 @@ class Scene:
 
     def load_light(self, base_key: str) -> None:
         new_light = fireflies.emitter.Light(base_key, device=self._device)
+
+        if base_key + ".to_world" in self._mitsuba_params.keys():
+            to_world = self._mitsuba_params[base_key + ".to_world"].matrix.torch()
+            to_world = to_world.squeeze().to(self._device)
+            new_light.set_world(to_world)
 
         light_keys = []
         for key in self._mitsuba_params.keys():
@@ -280,7 +282,7 @@ class Scene:
             for key, value in float_dict.items():
                 joined_key = light.name() + "." + key
                 temp_type = type(self._mitsuba_params[joined_key])
-                self._mitsuba_params[joined_key] = temp_type(value)
+                self._mitsuba_params[joined_key] = temp_type(value.item())
 
             for key, value in vec3_dict.items():
                 joined_key = light.name() + "." + key
@@ -300,7 +302,7 @@ class Scene:
             for key, value in float_dict.items():
                 joined_key = material.name() + "." + key
                 temp_type = type(self._mitsuba_params[joined_key])
-                self._mitsuba_params[joined_key] = temp_type(value)
+                self._mitsuba_params[joined_key] = temp_type(value.item())
 
             for key, value in vec3_dict.items():
                 joined_key = material.name() + "." + key
@@ -350,4 +352,3 @@ class Scene:
 
         # We finally update the mitsuba scene graph itself
         self._mitsuba_params.update()
-        self._num_updates += 1

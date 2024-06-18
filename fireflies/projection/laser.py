@@ -1,17 +1,19 @@
 import torch
 import numpy as np
 import math
+
 import fireflies.graphics.rasterization
-import fireflies.utils.transforms
+import fireflies.utils.math
 import fireflies.sampling.poisson
-import fireflies.entity.base
-import projector
+import fireflies.entity
+
+import fireflies.projection as projection
 import yaml
 
 from typing import List
 
 
-class Laser(projector.Projector):
+class Laser(projection.Camera):
     # Static Convenience Function
     @staticmethod
     def generate_uniform_rays(
@@ -108,9 +110,7 @@ class Laser(projector.Projector):
         )
         poisson_radius += poisson_radius / 4.0
         im = np.ones([image_size_x, image_size_y]) * poisson_radius
-        num_samples, poisson_samples = fireflies.sampling.poisson.poissonDiskSampling(
-            im
-        )
+        num_samples, poisson_samples = fireflies.sampling.poisson.bridson(im)
         # print(len(poisson_samples))
         poisson_samples = torch.tensor(poisson_samples, device=device)
 
@@ -130,9 +130,7 @@ class Laser(projector.Projector):
         # temp[:, 0:2] = poisson_samples
 
         # Project to world
-        rays = fireflies.utils.transforms.transform_points(
-            temp, intrinsic_matrix.inverse()
-        )
+        rays = fireflies.utils.math.transform_points(temp, intrinsic_matrix.inverse())
 
         # rays = fireflies.utils.transforms.transform_points(
         #    rays,
@@ -157,13 +155,13 @@ class Laser(projector.Projector):
         device: torch.cuda.device = torch.device("cuda"),
     ):
         super(Laser, self).__init__(
-            self, transformable, perspective, None, max_fov, near_clip, far_clip, device
+            transformable, perspective, max_fov, near_clip, far_clip, device
         )
         self._rays = ray_directions.to(self.device)
         self.device = device
 
     def rays(self) -> torch.tensor:
-        return fireflies.utils.transforms.transform_directions(
+        return fireflies.utils.math.transform_directions(
             self._rays,
             self._fireflies.transformable.transformable.Transformable.world(),
         )
@@ -272,7 +270,7 @@ class Laser(projector.Projector):
             ],
             device=self.device,
         )
-        return fireflies.utils.transforms.transform_points(
+        return fireflies.utils.math.transform_points(
             self._rays, self._perspective @ FLIP_Y
         )
 
@@ -287,14 +285,14 @@ class Laser(projector.Projector):
             device=self.device,
         )
 
-        return fireflies.utils.transforms.transform_points(
+        return fireflies.utils.math.transform_points(
             points, (self._perspective @ FLIP_Y).inverse()
         )
 
     def generateTexture(self, sigma: float, texture_size: List[int]) -> torch.tensor:
         points = self.projectRaysToNDC()[:, 0:2]
         return fireflies.graphics.rasterization.rasterize_points(
-            points, sigma, texture_size
+            points.cpu(), sigma, texture_size.cpu(), device="cpu"
         )
 
     def render_epipolar_lines(
@@ -303,9 +301,7 @@ class Laser(projector.Projector):
         epipolar_min = self.originPerRay() + self._near_clip * self.rays()
         epipolar_max = self.originPerRay() + self._far_clip * self.rays()
 
-        CAMERA_TO_WORLD = (
-            self._fireflies.transformable.transformable.Transformable.world()
-        )
+        CAMERA_TO_WORLD = self._fireflies.entity.Transformable.world()
         WORLD_TO_CAMERA = CAMERA_TO_WORLD.inverse()
 
         epipolar_max = fireflies.utils.transforms.transform_points(

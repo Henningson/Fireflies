@@ -10,12 +10,24 @@ class Sampler:
         device: torch.cuda.device = torch.device("cuda"),
     ) -> None:
         self._device = device
-        self._min_range = min.clone()
-        self._max_range = max.clone()
+        self._min_range = (
+            min.clone()
+            if type(min) is torch.Tensor
+            else torch.tensor([min], device=device)
+        )
+        self._max_range = (
+            max.clone()
+            if type(max) is torch.Tensor
+            else torch.tensor([max], device=device)
+        )
         self._train = True
 
         self._eval_step_size = eval_step_size
-        self._current_step = self._min_range.clone()
+        self._current_step = (
+            self._min_range.clone()
+            if type(min) is torch.Tensor
+            else torch.tensor([min], device=device)
+        )
 
     def set_sample_interval(self, min: torch.tensor, max: torch.tensor) -> None:
         self._min_range = min.clone()
