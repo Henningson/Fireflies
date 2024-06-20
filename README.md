@@ -68,13 +68,15 @@ Ideally, you work through them one by one. The last examples include the experim
 4. **Material Randomization** - How to randomize material parameters
 5. **Light Randomization** - How to randomize lights
 6. **Sampling** - How to implement different sampling strategies for scene randomization.
-7. **Animation** - Apply deformations either by scripting, or by loading meshes from a folder.
-8. **Laser Pattern Creation** - How to define and create laser pattern highlighted in the paper. 
-9. **Laser Pattern Optimization** - Laser pattern optimization to reduce ambiguities in correspondence estimation.
-10. **Domain Specific Pattern Optimization: Gaussian Mean Localization** - Optimize a laser pattern and small neural network that minimize a specific target function. For paper readers, this is the Gaussian optimization task. The complete experiments can be found in the **paper** branch.
-11. **Domain Specific Pattern Optimization: Depth Completion (Vocal Fold/Laryngoscopy)** - Optimize a laser pattern and gated convolutional neural network that infer dense depth maps from sparse depth input in a laryngoscopic setting. For paper readers, this is the Vocal Fold Depth Completion task. The complete experiments can be found in the **paper** branch.
-12. **Domain Specific Pattern Optimization: Depth Completion (Colonoscopy)** - Optimize a laser pattern and gated convolutional neural network that infer dense depth maps from sparse depth input in a coloscopic setting. For paper readers, this is the Colon Depth Completion task. The complete experiments can be found in the **paper** branch.
-13. **3D Reconstruction Pipeline** - Implementing a 3D reconstruction pipeline for evaluating a grid-based laser pattern.
+7. **Animation (a)** - Apply deformations via a deformation function.
+8. **Animation (b)** - Apply deformations by loading a set of obj-files from a folder.
+9. **B-Spline Camera Trajectory** - Load a B-Spline camera trajectory for randomization of colonoscopic data.
+10. **Laser Pattern Creation** - How to define and create laser pattern highlighted in the paper. 
+11. **Laser Pattern Optimization** - Laser pattern optimization to reduce ambiguities in correspondence estimation.
+12. **Domain Specific Pattern Optimization: Gaussian Mean Localization** - Optimize a laser pattern and small neural network that minimize a specific target function. For paper readers, this is the Gaussian optimization task. The complete experiments can be found in the **paper** branch.
+13. **Domain Specific Pattern Optimization: Depth Completion (Vocal Fold/Laryngoscopy)** - Optimize a laser pattern and gated convolutional neural network that infer dense depth maps from sparse depth input in a laryngoscopic setting. For paper readers, this is the Vocal Fold Depth Completion task. The complete experiments can be found in the **paper** branch.
+14. **Domain Specific Pattern Optimization: Depth Completion (Colonoscopy)** - Optimize a laser pattern and gated convolutional neural network that infer dense depth maps from sparse depth input in a coloscopic setting. For paper readers, this is the Colon Depth Completion task. The complete experiments can be found in the **paper** branch.
+15. **3D Reconstruction Pipeline** - Implementing a 3D reconstruction pipeline for evaluating a grid-based laser pattern.
 
 # Building and loading your own scene
 You can easily generate a scene using Blender.
