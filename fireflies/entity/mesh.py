@@ -1,6 +1,5 @@
 import os
 import torch
-import random
 import pywavefront
 
 import fireflies.entity.base as base
@@ -89,6 +88,7 @@ class Mesh(base.Transformable):
             0 if min is None else 0,
             self._anim_data_train.shape[0] if max is None else max,
         )
+        self._animated = True
 
     def add_eval_animation_from_obj(
         self, path: str, min: int = None, max: int = None
@@ -172,9 +172,11 @@ class Mesh(base.Transformable):
 
                 obj = pywavefront.Wavefront(obj_path, collect_faces=True)
 
-                animation_data.append(
-                    torch.tensor(obj.vertices, device=self._device).reshape(-1, 3)
+                vertices = torch.tensor(obj.vertices, device=self._device).reshape(
+                    -1, 3
                 )
+
+                animation_data.append(vertices)
 
         return torch.stack(animation_data)
 
@@ -189,7 +191,7 @@ class Mesh(base.Transformable):
         elif self._anim_data_train is not None and self._anim_data_eval is not None:
             return (
                 self._anim_data_train[time_sample]
-                if self.train()
+                if self._train
                 else self._anim_data_eval[time_sample]
             )
 

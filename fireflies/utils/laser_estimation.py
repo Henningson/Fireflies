@@ -18,8 +18,6 @@ import fireflies.utils.math
 import fireflies.utils.transforms
 import fireflies.utils.intersections
 
-import transforms
-
 
 import math
 
