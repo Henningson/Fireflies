@@ -12,7 +12,7 @@ class ApplySilhouette(base.BasePostProcessingFunction):
         silhouette_image: np.array,
         probability: float = 1.0,
     ):
-        super(ApplySilhouette, self).__init__(probability, device)
+        super(ApplySilhouette, self).__init__(probability)
         self._silhouette_image = silhouette_image
 
     def post_process(self, image: np.array) -> np.array:
