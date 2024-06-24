@@ -188,7 +188,7 @@ class Scene:
             key_without_base = ".".join(key.split(".")[1:])
             value = self._mitsuba_params[key]
 
-            if type(value) == mi.Transform4f:
+            if type(value) == mi.Transform4f or isinstance(value, mi.ScalarTransform3f):
                 continue
 
             if isinstance(value, mi.Float) or isinstance(value, float):
@@ -258,6 +258,21 @@ class Scene:
             self._camera.world().tolist()
         )
 
+        float_dict = self._camera.get_randomized_float_attributes()
+        vec3_dict = self._camera.get_randomized_vec3_attributes()
+
+        for key, value in float_dict.items():
+            joined_key = self._camera.name() + "." + key
+            temp_type = type(self._mitsuba_params[joined_key])
+            self._mitsuba_params[joined_key] = temp_type(value.item())
+
+        for key, value in vec3_dict.items():
+            joined_key = self._camera.name() + "." + key
+            temp_type = type(self._mitsuba_params[joined_key])
+            self._mitsuba_params[self._camera.name() + "." + key] = temp_type(
+                value.tolist()
+            )
+
     def update_projector(self) -> None:
         if not self._projector.randomizable():
             return
@@ -265,6 +280,21 @@ class Scene:
         self._mitsuba_params[self._projector.name() + ".to_world"] = mi.Transform4f(
             self._projector.world().tolist()
         )
+
+        float_dict = self._projector.get_randomized_float_attributes()
+        vec3_dict = self._projector.get_randomized_vec3_attributes()
+
+        for key, value in float_dict.items():
+            joined_key = self._projector.name() + "." + key
+            temp_type = type(self._mitsuba_params[joined_key])
+            self._mitsuba_params[joined_key] = temp_type(value.item())
+
+        for key, value in vec3_dict.items():
+            joined_key = self._projector.name() + "." + key
+            temp_type = type(self._mitsuba_params[joined_key])
+            self._mitsuba_params[self._projector.name() + "." + key] = temp_type(
+                value.tolist()
+            )
 
     def update_lights(self) -> None:
         for light in self._lights:
