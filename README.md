@@ -4,7 +4,7 @@
 It can be used for example, to easily generate highly realistic medical imaging data for medical machine learning tasks or (its intended use) test the reconstruction capabilities of Structured Light projection systems in simulated environments.
 I originally created it to research if the task of finding an optimal point-based laser pattern for structured light laryngoscopy can be reformulated as a gradient-based optimization problem. 
 
-This code accompanies the paper "Fireflies: Photorealistic Simulation and Optimization of Structured Light Endoscopy" accepted at **SASHIMI 2024**. 🎊
+This code accompanies the paper **Fireflies: Photorealistic Simulation and Optimization of Structured Light Endoscopy** accepted at **SASHIMI 2024**. 🎊
 
 
 # Main features
