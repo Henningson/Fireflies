@@ -61,6 +61,7 @@ for i in range(0, 20):
 
 # Examples
 A bunch of different examples can be found in the examples folder.
+Note that I'm currently reworking these examples.
 They span from defining a simple scene to training neural networks and optimizing point-based structured light pattern.
 Ideally, you work through them one by one. The last examples include the experiments of the paper. They consist of:
 
