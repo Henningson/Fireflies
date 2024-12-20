@@ -59,27 +59,9 @@ for i in range(0, 20):
 <img src="https://github.com/Henningson/Fireflies/assets/27073509/882f30b8-8254-493a-9c81-2be702c83326"/>
 </p>
 
-# Examples **(Under Construction)**
+# Examples
 A bunch of different examples can be found in the examples folder.
-Note that I'm currently reworking these examples.
-They span from defining a simple scene to training neural networks and optimizing point-based structured light pattern.
-Ideally, you work through them one by one. The last examples include the experiments of the paper. They consist of:
-
-1. **Hello World** - How to wrap fireflies around your Mitsuba scene.
-2. **General Transformations** - Showcasing different affine transformations.
-3. **Parent Child** - Defining hierarchical relationships for objects in the scene.
-4. **Material Randomization** - How to randomize material parameters
-5. **Light Randomization** - How to randomize lights
-6. **Sampling** - How to implement different sampling strategies for scene randomization.
-7. **Animation (a)** - Apply deformations via a deformation function.
-8. **Animation (b)** - Apply deformations by loading a set of obj-files from a folder.
-9. **B-Spline Camera Trajectory** - Load a B-Spline camera trajectory for randomization of colonoscopic data.
-10. **Laser Pattern Creation** - How to define and create laser pattern highlighted in the paper. 
-11. **Laser Pattern Optimization** - Laser pattern optimization to reduce ambiguities in correspondence estimation.
-12. **Domain Specific Pattern Optimization: Gaussian Mean Localization** - Optimize a laser pattern and small neural network that minimize a specific target function. For paper readers, this is the Gaussian optimization task. The complete experiments can be found in the **paper** branch.
-13. **Domain Specific Pattern Optimization: Depth Completion (Vocal Fold/Laryngoscopy)** - Optimize a laser pattern and gated convolutional neural network that infer dense depth maps from sparse depth input in a laryngoscopic setting. For paper readers, this is the Vocal Fold Depth Completion task. The complete experiments can be found in the **paper** branch.
-14. **Domain Specific Pattern Optimization: Depth Completion (Colonoscopy)** - Optimize a laser pattern and gated convolutional neural network that infer dense depth maps from sparse depth input in a coloscopic setting. For paper readers, this is the Colon Depth Completion task. The complete experiments can be found in the **paper** branch.
-15. **3D Reconstruction Pipeline** - Implementing a 3D reconstruction pipeline for evaluating a grid-based laser pattern.
+Papercode can be found in the **Paper** branch.
 
 # Building and loading your own scene
 You can easily generate a scene using Blender.
@@ -107,10 +89,6 @@ Because optimizing a point-based laser pattern looks like fireflies that jet aro
 </p>
 
 
-## PSA
-Since I am now in my last year of my PhD, I won't be really able to further work on this library for the time being.
-Please start pull requests for features, Add-Ons, Bug-fixes, etc. I'd be very happy about any help. :)
-
 ## Acknowledgements
 A big thank you to Wenzel Jakob and team for their wonderful work on the Mitsuba renderer.
 You should definitely check out their work: <a href="https://www.mitsuba-renderer.org/">Mitsuba Homepage</a>, <a href="https://github.com/mitsuba-renderer/mitsuba3">Mitsuba Github</a>.
@@ -126,12 +104,14 @@ Furthermore, this work was supported by Deutsche Forschungsgemeinschaft (DFG, Ge
 ## Citation
 Please cite this, if this work helps you with your research:
 ```
-@InProceedings{HenningsonFireflies,
-  author="TBD",
-  title="TBD",
-  booktitle="TBD",
-  year="2023",
-  pages="?",
-  isbn="?"
+@InProceedings{10.1007/978-3-031-73281-2_10,
+author="Henningson, Jann-Ole and Veltrup, Reinhard and Semmler, Marion and D{\"o}llinger, Michael and Stamminger, Marc",
+title="Fireflies: Photorealistic Simulation and Optimization of Structured Light Endoscopy",
+booktitle="Simulation and Synthesis in Medical Imaging",
+year="2025",
+publisher="Springer Nature Switzerland",
+address="Cham",
+pages="102--112",
+isbn="978-3-031-73281-2"
 }
 ```
